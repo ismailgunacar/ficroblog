@@ -315,12 +315,20 @@ app.post("/", requireAuth(), async (c) => {
     }
 
     // Create the post
+    logger.info("Getting next post ID...");
     const postId = await getNextSequence("posts");
+    logger.info(`Post ID obtained: ${postId}`);
+    
+    logger.info("Creating canonical context...");
     const ctx = createCanonicalContext(c.req.raw, undefined);
+    logger.info("Context created successfully");
+    
+    logger.info("Getting post URI...");
     const postUri = ctx.getObjectUri(Note, {
       identifier: user.username,
       id: postId.toString(),
     }).href;
+    logger.info(`Post URI: ${postUri}`);
 
     const newPost = {
       id: postId,
@@ -331,6 +339,7 @@ app.post("/", requireAuth(), async (c) => {
       created: new Date()
     };
 
+    logger.info("Inserting post into database...", { newPost });
     await postsCollection.insertOne(newPost);
     logger.info(`Post created successfully: ${postId} by user ${user.username}`);
 
@@ -378,7 +387,10 @@ app.post("/", requireAuth(), async (c) => {
     return c.redirect("/");
     
   } catch (error) {
-    logger.error("Failed to create post", { error });
+    logger.error("Failed to create post", { 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
     return c.redirect("/?error=failed");
   }
 });

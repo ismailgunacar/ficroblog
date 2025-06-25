@@ -48,14 +48,22 @@ export function getCanonicalDomain(): string {
 
 // Helper function to create federation context with canonical domain
 export function createCanonicalContext(request: Request, data?: any) {
-  const canonicalUrl = getCanonicalDomain();
-  // Create a new request with the canonical domain but preserve other request properties
-  const canonicalRequest = new Request(canonicalUrl + new URL(request.url).pathname + new URL(request.url).search, {
-    method: request.method,
-    headers: request.headers,
-    body: request.body,
-  });
-  return federation.createContext(canonicalRequest, data);
+  try {
+    const canonicalUrl = getCanonicalDomain();
+    // Create a new request with the canonical domain but preserve other request properties
+    // For POST requests, don't try to pass the body as it may already be consumed
+    const canonicalRequest = new Request(canonicalUrl + new URL(request.url).pathname + new URL(request.url).search, {
+      method: 'GET', // Always use GET for federation context creation
+      headers: {
+        'Accept': 'application/activity+json',
+        'User-Agent': request.headers.get('User-Agent') || 'Marco3/1.0',
+      },
+    });
+    return federation.createContext(canonicalRequest, data);
+  } catch (error) {
+    logger.error("Error creating canonical context", { error: error instanceof Error ? error.message : String(error) });
+    throw error;
+  }
 }
 
 const federation = createFederation({
