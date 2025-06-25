@@ -18,6 +18,7 @@ import {
   PostList,
   PostPage,
   Profile,
+  ProfileEditForm,
   SetupForm,
 } from "./views.tsx";
 
@@ -261,6 +262,7 @@ app.post("/setup", async (c) => {
   const form = await c.req.formData();
   const username = form.get("username");
   const name = form.get("name");
+  const bio = form.get("bio");
   const password = form.get("password");
 
   if (typeof username !== "string" || !username.match(/^[a-z0-9_-]{1,50}$/)) {
@@ -272,6 +274,9 @@ app.post("/setup", async (c) => {
   if (typeof password !== "string" || password.length < 8) {
     return c.redirect("/setup");
   }
+
+  // Bio is optional, but if provided should be a string
+  const bioText = (typeof bio === "string" && bio.trim() !== "") ? bio.trim() : null;
 
   const url = new URL(c.req.url);
   // Use environment variable for domain if set, otherwise use request host
@@ -308,6 +313,7 @@ app.post("/setup", async (c) => {
       uri: ctx.getActorUri(username).href,
       handle,
       name,
+      summary: bioText, // Add bio/summary for fediverse compatibility
       inbox_url: ctx.getInboxUri(username).href,
       shared_inbox_url: ctx.getInboxUri().href,
       url: ctx.getActorUri(username).href,
@@ -374,6 +380,7 @@ app.get("/users/:username", requireAuth(), async (c) => {
         name={actor.name ?? user.username}
         username={user.username}
         handle={actor.handle}
+        bio={actor.summary}
         following={followingCount}
         followers={followersCount}
       />
@@ -480,6 +487,7 @@ app.get("/users/:username/posts/:id", requireAuth(), async (c) => {
         name={actor.name ?? user.username}
         username={user.username}
         handle={actor.handle}
+        bio={actor.summary}
         following={followingCount}
         followers={followersCount}
         post={postWithActor}
@@ -867,6 +875,79 @@ app.post("/posts/:id/repost", requireAuth(), async (c) => {
   } catch (error) {
     logger.error("Failed to repost/unrepost post", { error });
     return c.json({ error: "Failed to process repost" }, 500);
+  }
+});
+
+// Profile edit page
+app.get("/profile/edit", requireAuth(), async (c) => {
+  await connectToDatabase();
+  const usersCollection = getUsersCollection();
+  const actorsCollection = getActorsCollection();
+
+  const currentUser = getCurrentUser(c);
+  if (!currentUser) {
+    return c.redirect("/login");
+  }
+
+  const user = await usersCollection.findOne({ id: currentUser.userId });
+  if (!user) {
+    return c.redirect("/login");
+  }
+
+  const actor = await actorsCollection.findOne({ user_id: user.id });
+  if (!actor) {
+    return c.redirect("/setup");
+  }
+
+  return c.html(
+    <Layout>
+      <ProfileEditForm name={actor.name || user.username} bio={actor.summary} />
+    </Layout>
+  );
+});
+
+// Profile edit form submission
+app.post("/profile/edit", requireAuth(), async (c) => {
+  await connectToDatabase();
+  const usersCollection = getUsersCollection();
+  const actorsCollection = getActorsCollection();
+
+  const currentUser = getCurrentUser(c);
+  if (!currentUser) {
+    return c.redirect("/login");
+  }
+
+  const user = await usersCollection.findOne({ id: currentUser.userId });
+  if (!user) {
+    return c.redirect("/login");
+  }
+
+  const form = await c.req.formData();
+  const name = form.get("name");
+  const bio = form.get("bio");
+
+  if (typeof name !== "string" || name.trim() === "") {
+    return c.redirect("/profile/edit");
+  }
+
+  // Bio is optional
+  const bioText = (typeof bio === "string" && bio.trim() !== "") ? bio.trim() : null;
+
+  try {
+    await actorsCollection.updateOne(
+      { user_id: user.id },
+      {
+        $set: {
+          name: name.trim(),
+          summary: bioText
+        }
+      }
+    );
+
+    return c.redirect(`/users/${user.username}`);
+  } catch (error) {
+    logger.error("Failed to update profile", { error });
+    return c.redirect("/profile/edit");
   }
 });
 

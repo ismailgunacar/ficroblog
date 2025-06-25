@@ -15,6 +15,7 @@ export interface Actor {
   uri: string;
   handle: string;
   name: string | null;
+  summary: string | null; // Bio/description for fediverse compatibility
   inbox_url: string;
   shared_inbox_url: string | null;
   url: string | null;

@@ -130,6 +130,15 @@ export const SetupForm: FC = () => (
           Name <input type="text" name="name" required />
         </label>
         <label>
+          Bio{" "}
+          <textarea
+            name="bio"
+            placeholder="Tell the fediverse about yourself..."
+            maxlength={500}
+            rows={3}
+          />
+        </label>
+        <label>
           Password{" "}
           <input
             type="password"
@@ -180,6 +189,7 @@ export interface ProfileProps {
   name: string;
   username: string;
   handle: string;
+  bio?: string;
   following: number;
   followers: number;
 }
@@ -188,6 +198,7 @@ export const Profile: FC<ProfileProps> = ({
   name,
   username,
   handle,
+  bio,
   following,
   followers,
 }) => (
@@ -203,7 +214,10 @@ export const Profile: FC<ProfileProps> = ({
         <a href={`/users/${username}/followers`}>
           {followers === 1 ? "1 follower" : `${followers} followers`}
         </a>
+        {" "}&middot;{" "}
+        <a href="/profile/edit">Edit Profile</a>
       </p>
+      {bio && <p style="font-style: italic; margin-top: 0.5rem;">{bio}</p>}
     </hgroup>
   </>
 );
@@ -215,23 +229,29 @@ export interface HomeProps extends PostListProps {
 
 export const Home: FC<HomeProps> = ({ user, posts, isAuthenticated = false }) => (
   <>
+    {/* Profile header with bio */}
     <hgroup>
-      <h1>{user.name}'s microblog</h1>
+      <h1>
+        <a href={`/users/${user.username}`}>{user.name}</a>
+      </h1>
       <p>
-        {isAuthenticated ? (
+        <span style="user-select: all;">{user.handle}</span>
+        {isAuthenticated && (
           <>
-            <a href={`/users/${user.username}`}>{user.name}'s profile</a>
+            {" "}&middot;{" "}
+            <a href="/profile/edit">Edit Profile</a>
             {" | "}
             <a href="/logout">Logout</a>
           </>
-        ) : (
+        )}
+        {!isAuthenticated && (
           <>
-            Welcome to {user.name}'s microblog
             {" | "}
             <a href="/login">Login</a>
           </>
         )}
       </p>
+      {user.summary && <p style="font-style: italic; margin-top: 0.5rem;">{user.summary}</p>}
     </hgroup>
     
     {/* Only show follow form and post form when authenticated */}
@@ -427,6 +447,7 @@ export const PostPage: FC<PostPageProps> = (props) => (
       name={props.name}
       username={props.username}
       handle={props.handle}
+      bio={props.bio}
       following={props.following}
       followers={props.followers}
     />
@@ -489,5 +510,39 @@ export const ActorLink: FC<ActorLinkProps> = ({ actor }) => {
         )
       </small>
     </>
+  );
+};
+
+// Profile edit form
+export const ProfileEditForm: FC<{ name: string; bio?: string }> = ({ name, bio }) => {
+  console.log('🎨 ProfileEditForm Debug:');
+  console.log('   name prop:', name);
+  console.log('   bio prop:', bio);
+  console.log('   bio type:', typeof bio);
+  console.log('   bio length:', bio?.length || 0);
+  
+  return (
+  <>
+    <h2>Edit Profile</h2>
+    <form method="post" action="/profile/edit">
+      <fieldset>
+        <label>
+          Name <input type="text" name="name" required value={name} />
+        </label>
+        <label>
+          Bio{" "}
+          <textarea
+            name="bio"
+            placeholder="Tell the fediverse about yourself..."
+            maxlength={500}
+            rows={3}
+          >
+            {bio || ""}
+          </textarea>
+        </label>
+      </fieldset>
+      <input type="submit" value="Update Profile" />
+    </form>
+  </>
   );
 };

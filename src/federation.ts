@@ -87,6 +87,7 @@ federation
       id: ctx.getActorUri(identifier),
       preferredUsername: identifier,
       name: actor.name,
+      summary: actor.summary, // Include bio/description for fediverse compatibility
       inbox: ctx.getInboxUri(identifier),
       endpoints: new Endpoints({
         sharedInbox: ctx.getInboxUri(),
