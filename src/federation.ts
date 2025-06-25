@@ -81,6 +81,27 @@ async function persistActor(actor: APActor): Promise<Actor | null> {
   await connectToDatabase();
   const actorsCollection = getActorsCollection();
 
+  // Check if actor already exists
+  const existingActor = await actorsCollection.findOne({ uri: actor.id.href });
+  if (existingActor) {
+    // Update existing actor with new data (but keep the same ID)
+    const updatedData = {
+      handle: await getActorHandle(actor),
+      name: actor.name?.toString() || null,
+      inbox_url: actor.inboxId.href,
+      shared_inbox_url: actor.endpoints?.sharedInbox?.href || null,
+      url: actor.url?.href || null,
+    };
+
+    await actorsCollection.updateOne(
+      { uri: actor.id.href },
+      { $set: updatedData }
+    );
+    
+    return { ...existingActor, ...updatedData } as Actor;
+  }
+
+  // Create new actor
   const actorData = {
     id: await getNextSequence("actors"),
     user_id: null,
@@ -94,13 +115,8 @@ async function persistActor(actor: APActor): Promise<Actor | null> {
   };
 
   try {
-    // Try to update existing actor or insert new one
-    const result = await actorsCollection.findOneAndUpdate(
-      { uri: actorData.uri },
-      { $set: actorData },
-      { upsert: true, returnDocument: "after" }
-    );
-    return result as Actor;
+    await actorsCollection.insertOne(actorData);
+    return actorData as Actor;
   } catch (error) {
     logger.error("Failed to persist actor", { error, actor: actorData });
     return null;
