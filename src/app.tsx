@@ -205,19 +205,29 @@ app.post("/", requireAuth(), async (c) => {
       const noteArgs = { identifier: user.username, id: postId.toString() };
       const note = await ctx.getObject(Note, noteArgs);
       
-      await ctx.sendActivity(
-        { identifier: user.username },
-        "followers",
-        new Create({
-          id: new URL("#activity", note?.id ?? undefined),
-          object: note,
-          actors: note?.attributionIds,
-          tos: note?.toIds,
-          ccs: note?.ccIds,
-        })
-      );
+      if (note) {
+        await ctx.sendActivity(
+          { identifier: user.username },
+          "followers",
+          new Create({
+            id: new URL(`https://gunac.ar/activities/create/${postId}`),
+            actor: ctx.getActorUri(user.username),
+            object: note,
+            to: PUBLIC_COLLECTION,
+            cc: ctx.getFollowersUri(user.username),
+            published: note.published,
+          })
+        );
+        logger.info("ActivityPub Create activity sent successfully", { postId });
+      } else {
+        logger.error("Failed to get note object for Create activity", { postId });
+      }
     } catch (activityError) {
-      logger.warn("Failed to send ActivityPub Create activity", { activityError });
+      logger.error("Failed to send ActivityPub Create activity", { 
+        activityError: activityError instanceof Error ? activityError.message : String(activityError),
+        postId,
+        username: user.username
+      });
       // Continue anyway - the post was created successfully
     }
 
@@ -427,20 +437,34 @@ app.post("/users/:username/posts", requireAuth(), async (c) => {
     await postsCollection.insertOne(newPost);
 
     // Send Create(Note) activity to followers
-    const noteArgs = { identifier: username, id: postId.toString() };
-    const note = await ctx.getObject(Note, noteArgs);
-    
-    await ctx.sendActivity(
-      { identifier: username },
-      "followers",
-      new Create({
-        id: new URL("#activity", note?.id ?? undefined),
-        object: note,
-        actors: note?.attributionIds,
-        tos: note?.toIds,
-        ccs: note?.ccIds,
-      })
-    );
+    try {
+      const noteArgs = { identifier: username, id: postId.toString() };
+      const note = await ctx.getObject(Note, noteArgs);
+      
+      if (note) {
+        await ctx.sendActivity(
+          { identifier: username },
+          "followers",
+          new Create({
+            id: new URL(`https://gunac.ar/activities/create/${postId}`),
+            actor: ctx.getActorUri(username),
+            object: note,
+            to: PUBLIC_COLLECTION,
+            cc: ctx.getFollowersUri(username),
+            published: note.published,
+          })
+        );
+        logger.info("ActivityPub Create activity sent successfully", { postId });
+      } else {
+        logger.error("Failed to get note object for Create activity", { postId });
+      }
+    } catch (activityError) {
+      logger.error("Failed to send ActivityPub Create activity", { 
+        activityError: activityError instanceof Error ? activityError.message : String(activityError),
+        postId,
+        username
+      });
+    }
 
     return c.redirect(postUri);
   } catch (error) {
