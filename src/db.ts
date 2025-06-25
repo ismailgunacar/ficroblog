@@ -1,5 +1,11 @@
 import { MongoClient, Db, Collection } from "mongodb";
 
+// Ensure environment variables are available
+if (!process.env.MONGODB_URI) {
+  process.env.MONGODB_URI = "mongodb+srv://igunacar:fbVBpdpDuyTHxB5t@cluster0.isg22.mongodb.net/marco3?retryWrites=true&w=majority&appName=Cluster0";
+  console.warn("MONGODB_URI not found, using fallback");
+}
+
 // MongoDB connection string from environment variable
 const MONGODB_URI = process.env.MONGODB_URI;
 

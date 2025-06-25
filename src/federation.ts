@@ -29,6 +29,16 @@ import type { Actor, Key, Post, User } from "./schema.ts";
 
 const logger = getLogger("marco3");
 
+// Ensure environment variables are available for federation context
+if (!process.env.MONGODB_URI) {
+  process.env.MONGODB_URI = "mongodb+srv://igunacar:fbVBpdpDuyTHxB5t@cluster0.isg22.mongodb.net/marco3?retryWrites=true&w=majority&appName=Cluster0";
+  logger.warn("MONGODB_URI not found, using fallback for federation context");
+}
+if (!process.env.DOMAIN) {
+  process.env.DOMAIN = "gunac.ar";
+  logger.warn("DOMAIN not found, using fallback for federation context");
+}
+
 // Helper function to get canonical domain for federation
 export function getCanonicalDomain(): string {
   const domain = process.env.DOMAIN || "gunac.ar";
