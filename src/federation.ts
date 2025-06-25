@@ -90,6 +90,7 @@ federation
       name: actor.name,
       summary: actor.summary, // Include bio/description for fediverse compatibility
       inbox: ctx.getInboxUri(identifier),
+      outbox: ctx.getOutboxUri(identifier),
       endpoints: new Endpoints({
         sharedInbox: ctx.getInboxUri(),
       }),
@@ -234,6 +235,66 @@ federation
     if (!actor) return 0;
 
     return await followsCollection.countDocuments({ following_id: actor.id });
+  });
+
+// Outbox dispatcher
+federation
+  .setOutboxDispatcher("/users/{identifier}/outbox", async (ctx, identifier, cursor) => {
+    await connectToDatabase();
+    const usersCollection = getUsersCollection();
+    const actorsCollection = getActorsCollection();
+    const postsCollection = getPostsCollection();
+
+    const user = await usersCollection.findOne({ username: identifier });
+    if (!user) return { items: [] };
+
+    const actor = await actorsCollection.findOne({ user_id: user.id });
+    if (!actor) return { items: [] };
+
+    // Get recent posts for this user
+    const posts = await postsCollection
+      .find({ actor_id: actor.id })
+      .sort({ created: -1 })
+      .limit(20)
+      .toArray();
+
+    const items = posts.map(post => {
+      const note = new Note({
+        id: new URL(`https://gunac.ar/users/${identifier}/posts/${post.id}`),
+        attribution: ctx.getActorUri(identifier),
+        to: PUBLIC_COLLECTION,
+        cc: ctx.getFollowersUri(identifier),
+        content: post.content,
+        mediaType: "text/html",
+        published: Temporal.Instant.from(post.created.toISOString()),
+        url: new URL(`https://gunac.ar/users/${identifier}/posts/${post.id}`),
+      });
+
+      return new Create({
+        id: new URL(`https://gunac.ar/activities/create/${post.id}`),
+        actor: ctx.getActorUri(identifier),
+        object: note,
+        to: PUBLIC_COLLECTION,
+        cc: ctx.getFollowersUri(identifier),
+        published: Temporal.Instant.from(post.created.toISOString()),
+      });
+    });
+
+    return { items };
+  })
+  .setCounter(async (ctx, identifier) => {
+    await connectToDatabase();
+    const usersCollection = getUsersCollection();
+    const actorsCollection = getActorsCollection();
+    const postsCollection = getPostsCollection();
+
+    const user = await usersCollection.findOne({ username: identifier });
+    if (!user) return 0;
+
+    const actor = await actorsCollection.findOne({ user_id: user.id });
+    if (!actor) return 0;
+
+    return await postsCollection.countDocuments({ actor_id: actor.id });
   });
 
 // Inbox listeners
@@ -588,6 +649,91 @@ federation
       logger.error("Failed to process announce activity", { error });
     }
   });
+
+// Function to send new post to followers
+export async function sendPostToFollowers(userId: number, post: Post, actor: Actor): Promise<void> {
+  try {
+    await connectToDatabase();
+    const followsCollection = getFollowsCollection();
+    const actorsCollection = getActorsCollection();
+    
+    // Get all followers for this user
+    const followers = await followsCollection.find({ following_id: userId }).toArray();
+    
+    if (followers.length === 0) {
+      logger.debug("No followers to send post to", { userId, postId: post.id });
+      return;
+    }
+    
+    // Create the context for sending activities
+    const context = federation.createContext(new URL("https://gunac.ar"), userId);
+    
+    const username = actor.handle.split('@')[1];
+    const actorUrl = new URL(`https://gunac.ar/users/${username}`);
+    
+    const note = new Note({
+      id: new URL(`https://gunac.ar/users/${username}/posts/${post.id}`),
+      attribution: actorUrl,
+      to: PUBLIC_COLLECTION,
+      cc: context.getFollowersUri(username),
+      content: post.content,
+      mediaType: "text/html",
+      published: Temporal.Instant.from(post.created.toISOString()),
+      url: new URL(`https://gunac.ar/users/${username}/posts/${post.id}`),
+    });
+    
+    const create = new Create({
+      id: new URL(`https://gunac.ar/activities/create/${post.id}`),
+      actor: actorUrl,
+      object: note,
+      to: PUBLIC_COLLECTION,
+      cc: context.getFollowersUri(username),
+      published: Temporal.Instant.from(post.created.toISOString()),
+    });
+    
+    // Send to all followers
+    for (const follow of followers) {
+      const followerActor = await actorsCollection.findOne({ id: follow.follower_id });
+      
+      if (followerActor && followerActor.inbox_url) {
+        try {
+          await context.sendActivity(
+            { identifier: username },
+            { 
+              id: new URL(followerActor.uri),
+              inboxId: new URL(followerActor.inbox_url)
+            },
+            create
+          );
+          
+          logger.debug("Post sent to follower", { 
+            postId: post.id,
+            followerId: followerActor.id,
+            followerUri: followerActor.uri
+          });
+        } catch (error) {
+          logger.error("Failed to send post to follower", {
+            postId: post.id,
+            followerId: followerActor.id,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      }
+    }
+    
+    logger.info("Post sent to followers", { 
+      userId, 
+      postId: post.id,
+      followerCount: followers.length 
+    });
+  } catch (error) {
+    logger.error("Failed to send post to followers", { 
+      userId, 
+      postId: post.id,
+      error: error instanceof Error ? error.message : String(error) 
+    });
+  }
+}
 
 // Function to send profile update to followers
 export async function sendProfileUpdate(userId: number, actor: Actor): Promise<void> {

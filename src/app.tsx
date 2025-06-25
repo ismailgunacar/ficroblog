@@ -4,7 +4,7 @@ import { getLogger } from "@logtape/logtape";
 import { stringifyEntities } from "stringify-entities";
 import { Create, Follow, isActor, Note, Like, Announce, Undo, PUBLIC_COLLECTION } from "@fedify/fedify";
 import * as bcrypt from "bcrypt";
-import fedi, { sendProfileUpdate } from "./federation.ts";
+import fedi, { sendProfileUpdate, sendPostToFollowers } from "./federation.ts";
 import { connectToDatabase, getUsersCollection, getActorsCollection, getPostsCollection, getFollowsCollection, getLikesCollection, getRepostsCollection } from "./db.ts";
 import { getNextSequence } from "./utils.ts";
 import type { Actor, Post, User } from "./schema.ts";
