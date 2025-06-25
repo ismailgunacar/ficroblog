@@ -274,7 +274,9 @@ app.post("/setup", async (c) => {
   }
 
   const url = new URL(c.req.url);
-  const handle = `@${username}@${url.host}`;
+  // Use environment variable for domain if set, otherwise use request host
+  const domain = process.env.DOMAIN || url.host;
+  const handle = `@${username}@${domain}`;
   const ctx = fedi.createContext(c.req.raw, undefined);
 
   try {
