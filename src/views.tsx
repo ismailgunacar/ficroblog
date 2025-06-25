@@ -298,7 +298,135 @@ export const Home: FC<HomeProps> = ({ user, posts, isAuthenticated = false }) =>
       </>
     )}
     
-    <PostList posts={posts} isAuthenticated={isAuthenticated} />
+    <div id="posts-container">
+      <PostList posts={posts} isAuthenticated={isAuthenticated} />
+    </div>
+    
+    {/* Loading indicator */}
+    <div id="loading-indicator" style={{ display: 'none', textAlign: 'center', padding: '1rem' }}>
+      <p>Loading more posts...</p>
+    </div>
+    
+    {/* End of posts indicator */}
+    <div id="end-of-posts" style={{ display: 'none', textAlign: 'center', padding: '1rem' }}>
+      <p><small>You've reached the end!</small></p>
+    </div>
+    
+    {/* Infinite scroll script */}
+    <script dangerouslySetInnerHTML={{
+      __html: `
+        let isLoading = false;
+        let hasMore = true;
+        let nextCursor = null;
+        
+        function loadMorePosts() {
+          if (isLoading || !hasMore) return;
+          
+          isLoading = true;
+          document.getElementById('loading-indicator').style.display = 'block';
+          
+          const url = '/api/posts' + (nextCursor ? '?cursor=' + nextCursor : '');
+          
+          fetch(url)
+            .then(response => response.json())
+            .then(data => {
+              const container = document.getElementById('posts-container');
+              
+              data.posts.forEach(post => {
+                const postDiv = document.createElement('div');
+                postDiv.innerHTML = createPostHTML(post);
+                container.appendChild(postDiv.firstChild);
+              });
+              
+              hasMore = data.hasMore;
+              nextCursor = data.nextCursor;
+              
+              if (!hasMore) {
+                document.getElementById('end-of-posts').style.display = 'block';
+              }
+            })
+            .catch(error => {
+              console.error('Error loading more posts:', error);
+            })
+            .finally(() => {
+              isLoading = false;
+              document.getElementById('loading-indicator').style.display = 'none';
+            });
+        }
+        
+        function createPostHTML(post) {
+          const formatTimestamp = (timestamp) => {
+            try {
+              const date = new Date(timestamp);
+              return {
+                iso: date.toISOString(),
+                display: date.toLocaleString()
+              };
+            } catch (error) {
+              return { iso: '', display: 'Invalid date' };
+            }
+          };
+          
+          const makeLinksClickable = (text) => {
+            if (!text) return text;
+            const urlRegex = /(https?:\\/\\/[^\\s<>"{}|\\\\^\\x60[\\]]+|www\\.[^\\s<>"{}|\\\\^\\x60[\\]]+)/gi;
+            return text.replace(urlRegex, (url) => {
+              if (url.includes('<') || url.includes('>')) return url;
+              let href = url;
+              if (!url.startsWith('http')) href = 'https://' + url;
+              return '<a href="' + href + '" target="_blank" rel="noopener noreferrer">' + url + '</a>';
+            });
+          };
+          
+          const timestamp = formatTimestamp(post.created);
+          const isLocal = post.user_id || (post.handle && (post.handle.includes('@gunac.ar') || post.handle.includes('@localhost:8000')));
+          const username = post.handle.split('@')[1] || post.handle.split('@')[0];
+          const href = isLocal ? '/users/' + username : (post.url || post.uri);
+          
+          return \`
+            <article>
+              <header>
+                \${post.name ? 
+                  '<a href="' + href + '"><strong>' + post.name + '</strong></a> <small>(<a href="' + href + '" class="secondary">' + post.handle + '</a>)</small>' :
+                  '<a href="' + href + '" class="secondary">' + post.handle + '</a>'
+                }
+              </header>
+              <div>\${makeLinksClickable(post.content)}</div>
+              <footer>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <a href="\${post.url || post.uri}">
+                    <time datetime="\${timestamp.iso}">\${timestamp.display}</time>
+                  </a>
+                  <div style="display: flex; gap: 1rem; align-items: center; color: var(--muted-color);">
+                    <span>🤍 \${post.likesCount || 0}</span>
+                    <span>🔄 \${post.repostsCount || 0}</span>
+                  </div>
+                </div>
+              </footer>
+            </article>
+          \`;
+        }
+        
+        // Scroll event listener
+        function handleScroll() {
+          if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 1000) {
+            loadMorePosts();
+          }
+        }
+        
+        // Add scroll listener
+        window.addEventListener('scroll', handleScroll);
+        
+        // Initial cursor setup
+        document.addEventListener('DOMContentLoaded', function() {
+          const posts = document.querySelectorAll('[data-post-id]');
+          if (posts.length > 0) {
+            const lastPost = posts[posts.length - 1];
+            nextCursor = lastPost.dataset.postId;
+          }
+        });
+      `
+    }} />
   </>
 );
 
@@ -310,7 +438,7 @@ export interface PostListProps {
 export const PostList: FC<PostListProps> = ({ posts, isAuthenticated = false }) => (
   <>
     {posts.map((post) => (
-      <div key={post.id}>
+      <div key={post.id} id={`post-${post.id}`} data-post-id={post.id}>
         <PostView post={post} isAuthenticated={isAuthenticated} />
       </div>
     ))}

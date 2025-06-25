@@ -116,7 +116,7 @@ app.get("/", async (c) => {
         } : {} // Show all posts if not authenticated
       },
       { $sort: { created: -1 } },
-      { $limit: 50 }
+      { $limit: 1000 } // Load many more posts initially
     ])
     .toArray();
 
@@ -142,6 +142,140 @@ app.get("/", async (c) => {
       <Home user={userWithActor} posts={postsWithActors} isAuthenticated={isAuthenticated} />
     </Layout>
   );
+});
+
+// API endpoint for loading more posts (infinite scroll)
+app.get("/api/posts", async (c) => {
+  await connectToDatabase();
+  const usersCollection = getUsersCollection();
+  const actorsCollection = getActorsCollection();
+  const postsCollection = getPostsCollection();
+  const followsCollection = getFollowsCollection();
+  const likesCollection = getLikesCollection();
+  const repostsCollection = getRepostsCollection();
+
+  // Get pagination parameters
+  const cursor = c.req.query("cursor"); // Last post ID seen
+  const limit = Math.min(parseInt(c.req.query("limit") || "200"), 1000); // Max 1000 posts per request
+
+  // Check if user is authenticated
+  const currentUser = getCurrentUser(c);
+  const isAuthenticated = !!currentUser;
+
+  // Get the single user for filtering
+  const anyUser = await usersCollection.findOne({});
+  if (!anyUser) {
+    return c.json({ posts: [], hasMore: false });
+  }
+
+  const user = anyUser as User;
+  const actor = await actorsCollection.findOne({ user_id: user.id });
+  if (!actor) {
+    return c.json({ posts: [], hasMore: false });
+  }
+
+  // Get following IDs if authenticated
+  let followingIds: number[] = [];
+  if (isAuthenticated) {
+    followingIds = await followsCollection
+      .find({ follower_id: actor.id })
+      .map((f: any) => f.following_id)
+      .toArray();
+  }
+
+  // Build aggregation pipeline with cursor-based pagination
+  const pipeline: any[] = [
+    {
+      $lookup: {
+        from: "actors",
+        localField: "actor_id",
+        foreignField: "id",
+        as: "actor"
+      }
+    },
+    {
+      $lookup: {
+        from: "likes",
+        localField: "id",
+        foreignField: "post_id",
+        as: "likes"
+      }
+    },
+    {
+      $lookup: {
+        from: "reposts",
+        localField: "id",
+        foreignField: "post_id",
+        as: "reposts"
+      }
+    },
+    {
+      $addFields: {
+        likesCount: { $size: "$likes" },
+        repostsCount: { $size: "$reposts" },
+        isLikedByUser: isAuthenticated ? {
+          $in: [actor.id, "$likes.actor_id"]
+        } : false,
+        isRepostedByUser: isAuthenticated ? {
+          $in: [actor.id, "$reposts.actor_id"]
+        } : false
+      }
+    }
+  ];
+
+  // Add cursor-based pagination
+  if (cursor) {
+    pipeline.push({
+      $match: {
+        id: { $lt: parseInt(cursor) }
+      }
+    });
+  }
+
+  // Add filtering for authenticated users
+  pipeline.push({
+    $match: isAuthenticated ? {
+      $or: [
+        { actor_id: actor.id },
+        { actor_id: { $in: followingIds } }
+      ]
+    } : {} // Show all posts if not authenticated
+  });
+
+  // Add sorting and limit
+  pipeline.push(
+    { $sort: { created: -1 } },
+    { $limit: limit + 1 } // Get one extra to check if there are more
+  );
+
+  const posts = await postsCollection.aggregate(pipeline).toArray();
+
+  // Check if there are more posts
+  const hasMore = posts.length > limit;
+  if (hasMore) {
+    posts.pop(); // Remove the extra post
+  }
+
+  // Transform posts to include actor data
+  const postsWithActors = posts.map((post: any) => {
+    const actorData = post.actor[0] as Actor;
+    return {
+      ...post,
+      uri: actorData.uri,
+      handle: actorData.handle,
+      name: actorData.name,
+      user_id: actorData.user_id,
+      inbox_url: actorData.inbox_url,
+      shared_inbox_url: actorData.shared_inbox_url,
+      url: actorData.url || post.url,
+    };
+  });
+
+  return c.json({
+    posts: postsWithActors,
+    hasMore,
+    nextCursor: posts.length > 0 ? posts[posts.length - 1].id : null
+  });
 });
 
 // Post creation route - handle form submission from home page
