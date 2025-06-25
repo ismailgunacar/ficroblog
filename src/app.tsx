@@ -277,6 +277,10 @@ app.post("/setup", async (c) => {
   // Use environment variable for domain if set, otherwise use request host
   const domain = process.env.DOMAIN || url.host;
   const handle = `@${username}@${domain}`;
+  
+  // Log the domain configuration for debugging
+  console.log(`🌐 Domain configuration: env=${process.env.DOMAIN}, request=${url.host}, effective=${domain}`);
+  console.log(`🏷️  Generated handle: ${handle}`);
   const ctx = fedi.createContext(c.req.raw, undefined);
 
   try {
