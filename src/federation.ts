@@ -249,8 +249,23 @@ federation
         ])
         .toArray();
 
+      console.log(`Found ${followers.length} followers for actor ${actor.id}`);
+
       const items: Recipient[] = followers.map((f) => {
         const follower = f.follower[0] as Actor;
+        console.log("Follower data:", {
+          follower: !!follower,
+          uri: follower?.uri,
+          inbox_url: follower?.inbox_url,
+          shared_inbox_url: follower?.shared_inbox_url,
+          fullFollower: follower
+        });
+        
+        if (!follower || !follower.uri) {
+          console.error("Invalid follower data:", f);
+          return null;
+        }
+        
         return {
           id: new URL(follower.uri),
           inboxId: new URL(follower.inbox_url),
@@ -258,8 +273,9 @@ federation
             ? { sharedInbox: new URL(follower.shared_inbox_url) }
             : null,
         };
-      });
+      }).filter(Boolean) as Recipient[];
 
+      console.log(`Processed ${items.length} valid followers`);
       return { items };
     }
   )
