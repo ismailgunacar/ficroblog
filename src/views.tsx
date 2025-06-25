@@ -614,11 +614,13 @@ export const FollowerList: FC<FollowerListProps> = ({ followers }) => (
           <small>{followers.length} follower{followers.length !== 1 ? 's' : ''}</small>
         </p>
         <ul>
-          {followers.map((follower) => (
-            <li key={follower.id}>
-              <ActorLink actor={follower} />
-            </li>
-          ))}
+          {followers
+            .filter(follower => follower != null) // Filter out any null/undefined actors
+            .map((follower) => (
+              <li key={follower.id}>
+                <ActorLink actor={follower} />
+              </li>
+            ))}
         </ul>
       </div>
     )}
@@ -645,11 +647,13 @@ export const FollowingList: FC<FollowingListProps> = ({ following }) => (
           <small>{following.length} following</small>
         </p>
         <ul>
-          {following.map((actor) => (
-            <li key={actor.id}>
-              <ActorLink actor={actor} />
-            </li>
-          ))}
+          {following
+            .filter(actor => actor != null) // Filter out any null/undefined actors
+            .map((actor) => (
+              <li key={actor.id}>
+                <ActorLink actor={actor} />
+              </li>
+            ))}
         </ul>
       </div>
     )}

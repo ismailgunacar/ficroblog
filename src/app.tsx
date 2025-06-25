@@ -742,11 +742,15 @@ app.get("/users/:username/followers", async (c) => {
           as: "follower"
         }
       },
+      // Filter out records where no actor was found
+      { $match: { "follower.0": { $exists: true } } },
       { $sort: { created: -1 } }
     ])
     .toArray();
 
-  const followerActors = followers.map(f => f.follower[0]);
+  const followerActors = followers
+    .map(f => f.follower[0])
+    .filter(actor => actor != null); // Extra safety filter
 
   return c.html(
     <Layout>
@@ -781,11 +785,15 @@ app.get("/users/:username/following", async (c) => {
           as: "following"
         }
       },
+      // Filter out records where no actor was found
+      { $match: { "following.0": { $exists: true } } },
       { $sort: { created: -1 } }
     ])
     .toArray();
 
-  const followingActors = following.map(f => f.following[0]);
+  const followingActors = following
+    .map(f => f.following[0])
+    .filter(actor => actor != null); // Extra safety filter
 
   return c.html(
     <Layout>
