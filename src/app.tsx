@@ -4,7 +4,7 @@ import { getLogger } from "@logtape/logtape";
 import { stringifyEntities } from "stringify-entities";
 import { Create, Follow, isActor, Note, Like, Announce, Undo, PUBLIC_COLLECTION } from "@fedify/fedify";
 import * as bcrypt from "bcrypt";
-import fedi, { sendProfileUpdate, sendPostToFollowers } from "./federation.ts";
+import fedi, { sendProfileUpdate, sendPostToFollowers, createCanonicalContext } from "./federation.ts";
 import { connectToDatabase, getUsersCollection, getActorsCollection, getPostsCollection, getFollowsCollection, getLikesCollection, getRepostsCollection } from "./db.ts";
 import { getNextSequence } from "./utils.ts";
 import type { Actor, Post, User } from "./schema.ts";
@@ -316,7 +316,7 @@ app.post("/", requireAuth(), async (c) => {
 
     // Create the post
     const postId = await getNextSequence("posts");
-    const ctx = fedi.createContext(c.req.raw, undefined);
+    const ctx = createCanonicalContext(c.req.raw, undefined);
     const postUri = ctx.getObjectUri(Note, {
       identifier: user.username,
       id: postId.toString(),
@@ -337,14 +337,21 @@ app.post("/", requireAuth(), async (c) => {
     // Send Create(Note) activity to followers
     try {
       const noteArgs = { identifier: user.username, id: postId.toString() };
+      console.log("About to get Note object with args:", noteArgs);
       const note = await ctx.getObject(Note, noteArgs);
+      console.log("Note object result:", {
+        note: !!note,
+        id: note?.id?.href,
+        attributionId: note?.attributionId?.href,
+        published: note?.published?.toString()
+      });
       
       if (note) {
         await ctx.sendActivity(
           { identifier: user.username },
           "followers",
           new Create({
-            id: new URL(`https://gunac.ar/activities/create/${postId}`),
+            id: new URL(ctx.getObjectUri(Note, { identifier: user.username, id: postId.toString() }).href.replace('/posts/', '/activities/create/')),
             actor: ctx.getActorUri(user.username),
             object: note,
             to: PUBLIC_COLLECTION,
@@ -359,9 +366,11 @@ app.post("/", requireAuth(), async (c) => {
     } catch (activityError) {
       logger.error("Failed to send ActivityPub Create activity", { 
         activityError: activityError instanceof Error ? activityError.message : String(activityError),
+        activityErrorStack: activityError instanceof Error ? activityError.stack : undefined,
         postId,
         username: user.username
       });
+      console.error("Full ActivityPub error:", activityError);
       // Continue anyway - the post was created successfully
     }
 
@@ -421,7 +430,7 @@ app.post("/setup", async (c) => {
 
   const url = new URL(c.req.url);
   const handle = `@${username}@${url.host}`;
-  const ctx = fedi.createContext(c.req.raw, undefined);
+  const ctx = createCanonicalContext(c.req.raw, undefined);
 
   try {
     // Double-check no user exists before creating (race condition protection)
@@ -549,7 +558,7 @@ app.post("/users/:username/posts", requireAuth(), async (c) => {
     return c.text("Content is required", 400);
   }
 
-  const ctx = fedi.createContext(c.req.raw, undefined);
+  const ctx = createCanonicalContext(c.req.raw, undefined);
   
   try {
     const postId = await getNextSequence("posts");
@@ -580,7 +589,7 @@ app.post("/users/:username/posts", requireAuth(), async (c) => {
           { identifier: username },
           "followers",
           new Create({
-            id: new URL(`https://gunac.ar/activities/create/${postId}`),
+            id: new URL(ctx.getObjectUri(Note, { identifier: username, id: postId.toString() }).href.replace('/posts/', '/activities/create/')),
             actor: ctx.getActorUri(username),
             object: note,
             to: PUBLIC_COLLECTION,
@@ -670,7 +679,7 @@ app.post("/users/:username/following", requireAuth(), async (c) => {
   const user = await usersCollection.findOne({ username });
   if (!user) return c.text("User not found", 404);
 
-  const ctx = fedi.createContext(c.req.raw, undefined);
+  const ctx = createCanonicalContext(c.req.raw, undefined);
   
   try {
     const actor = await ctx.lookupObject(handle.trim());
@@ -951,7 +960,7 @@ app.post("/posts/:id/like", requireAuth(), async (c) => {
       post_id: postId
     });
 
-    const ctx = fedi.createContext(c.req.raw, undefined);
+    const ctx = createCanonicalContext(c.req.raw, undefined);
 
     if (existingLike) {
       // Unlike - remove the like and send Undo activity
@@ -1056,7 +1065,7 @@ app.post("/posts/:id/repost", requireAuth(), async (c) => {
       post_id: postId
     });
 
-    const ctx = fedi.createContext(c.req.raw, undefined);
+    const ctx = createCanonicalContext(c.req.raw, undefined);
 
     if (existingRepost) {
       // Unrepost - remove the repost and send Undo activity

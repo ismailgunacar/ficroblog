@@ -29,6 +29,25 @@ import type { Actor, Key, Post, User } from "./schema.ts";
 
 const logger = getLogger("marco3");
 
+// Helper function to get canonical domain for federation
+export function getCanonicalDomain(): string {
+  const domain = process.env.DOMAIN || "gunac.ar";
+  // Always use HTTPS for production federation, even in development
+  return domain.includes("localhost") ? `http://${domain}` : `https://${domain}`;
+}
+
+// Helper function to create federation context with canonical domain
+export function createCanonicalContext(request: Request, data?: any) {
+  const canonicalUrl = getCanonicalDomain();
+  // Create a new request with the canonical domain but preserve other request properties
+  const canonicalRequest = new Request(canonicalUrl + new URL(request.url).pathname + new URL(request.url).search, {
+    method: request.method,
+    headers: request.headers,
+    body: request.body,
+  });
+  return federation.createContext(canonicalRequest, data);
+}
+
 const federation = createFederation({
   kv: new MemoryKvStore(),
   queue: new InProcessMessageQueue(),
@@ -153,14 +172,18 @@ federation.setObjectDispatcher(
   async (ctx, values) => {
     await connectToDatabase();
     const usersCollection = getUsersCollection();
+    const actorsCollection = getActorsCollection();
     const postsCollection = getPostsCollection();
 
     const user = await usersCollection.findOne({ username: values.identifier });
     if (!user) return null;
 
+    const actor = await actorsCollection.findOne({ user_id: user.id });
+    if (!actor) return null;
+
     const post = await postsCollection.findOne({ 
       id: parseInt(values.id),
-      actor_id: user.id 
+      actor_id: actor.id 
     });
     if (!post) return null;
 
@@ -260,18 +283,18 @@ federation
 
     const items = posts.map(post => {
       const note = new Note({
-        id: new URL(`https://gunac.ar/users/${identifier}/posts/${post.id}`),
+        id: ctx.getObjectUri(Note, { identifier, id: post.id.toString() }),
         attribution: ctx.getActorUri(identifier),
         to: PUBLIC_COLLECTION,
         cc: ctx.getFollowersUri(identifier),
         content: post.content,
         mediaType: "text/html",
         published: Temporal.Instant.from(post.created.toISOString()),
-        url: new URL(`https://gunac.ar/users/${identifier}/posts/${post.id}`),
+        url: ctx.getObjectUri(Note, { identifier, id: post.id.toString() }),
       });
 
       return new Create({
-        id: new URL(`https://gunac.ar/activities/create/${post.id}`),
+        id: new URL(ctx.getObjectUri(Note, { identifier, id: post.id.toString() }).href.replace('/posts/', '/activities/create/')),
         actor: ctx.getActorUri(identifier),
         object: note,
         to: PUBLIC_COLLECTION,
@@ -656,6 +679,14 @@ export async function sendPostToFollowers(userId: number, post: Post, actor: Act
     await connectToDatabase();
     const followsCollection = getFollowsCollection();
     const actorsCollection = getActorsCollection();
+    const usersCollection = getUsersCollection();
+    
+    // Get the user to find username
+    const user = await usersCollection.findOne({ id: userId });
+    if (!user) {
+      logger.error("User not found for sending post to followers", { userId });
+      return;
+    }
     
     // Get all followers for this user
     const followers = await followsCollection.find({ following_id: userId }).toArray();
@@ -665,29 +696,26 @@ export async function sendPostToFollowers(userId: number, post: Post, actor: Act
       return;
     }
     
-    // Create the context for sending activities
-    const context = federation.createContext(new URL("https://gunac.ar"), userId);
-    
-    const username = actor.handle.split('@')[1];
-    const actorUrl = new URL(`https://gunac.ar/users/${username}`);
+    // Create the context for sending activities  
+    const context = federation.createContext(new URL(getCanonicalDomain()), userId);
     
     const note = new Note({
-      id: new URL(`https://gunac.ar/users/${username}/posts/${post.id}`),
-      attribution: actorUrl,
+      id: context.getObjectUri(Note, { identifier: user.username, id: post.id.toString() }),
+      attribution: context.getActorUri(user.username),
       to: PUBLIC_COLLECTION,
-      cc: context.getFollowersUri(username),
+      cc: context.getFollowersUri(user.username),
       content: post.content,
       mediaType: "text/html",
       published: Temporal.Instant.from(post.created.toISOString()),
-      url: new URL(`https://gunac.ar/users/${username}/posts/${post.id}`),
+      url: context.getObjectUri(Note, { identifier: user.username, id: post.id.toString() }),
     });
     
     const create = new Create({
-      id: new URL(`https://gunac.ar/activities/create/${post.id}`),
-      actor: actorUrl,
+      id: new URL(context.getObjectUri(Note, { identifier: user.username, id: post.id.toString() }).href.replace('/posts/', '/activities/create/')),
+      actor: context.getActorUri(user.username),
       object: note,
       to: PUBLIC_COLLECTION,
-      cc: context.getFollowersUri(username),
+      cc: context.getFollowersUri(user.username),
       published: Temporal.Instant.from(post.created.toISOString()),
     });
     
@@ -698,7 +726,7 @@ export async function sendPostToFollowers(userId: number, post: Post, actor: Act
       if (followerActor && followerActor.inbox_url) {
         try {
           await context.sendActivity(
-            { identifier: username },
+            { identifier: user.username },
             { 
               id: new URL(followerActor.uri),
               inboxId: new URL(followerActor.inbox_url)
@@ -741,6 +769,14 @@ export async function sendProfileUpdate(userId: number, actor: Actor): Promise<v
     await connectToDatabase();
     const followsCollection = getFollowsCollection();
     const actorsCollection = getActorsCollection();
+    const usersCollection = getUsersCollection();
+    
+    // Get the user to find username
+    const user = await usersCollection.findOne({ id: userId });
+    if (!user) {
+      logger.error("User not found for sending profile update", { userId });
+      return;
+    }
     
     // Get all followers for this user
     const followers = await followsCollection.find({ following_id: userId }).toArray();
@@ -751,27 +787,24 @@ export async function sendProfileUpdate(userId: number, actor: Actor): Promise<v
     }
     
     // Create the context for sending activities
-    const context = federation.createContext(new URL("https://gunac.ar"), userId);
-    
-    const username = actor.handle.split('@')[1];
-    const actorUrl = new URL(`https://gunac.ar/users/${username}`);
+    const context = federation.createContext(new URL(getCanonicalDomain()), userId);
     
     const person = new Person({
-      id: actorUrl,
+      id: context.getActorUri(user.username),
       name: actor.name,
       summary: actor.summary,
-      preferredUsername: username,
-      inbox: new URL(actor.inbox_url),
+      preferredUsername: user.username,
+      inbox: context.getInboxUri(user.username),
       endpoints: new Endpoints({
-        sharedInbox: actor.shared_inbox_url ? new URL(actor.shared_inbox_url) : undefined,
+        sharedInbox: context.getInboxUri(),
       }),
-      url: actor.url ? new URL(actor.url) : undefined,
+      url: context.getActorUri(user.username),
       published: Temporal.Instant.fromEpochMilliseconds(actor.created.getTime()),
     });
     
     const update = new Update({
-      id: new URL(`https://gunac.ar/activities/update/${Date.now()}`),
-      actor: actorUrl,
+      id: new URL(`${getCanonicalDomain()}/activities/update/${Date.now()}`),
+      actor: context.getActorUri(user.username),
       object: person,
       published: Temporal.Instant.fromEpochMilliseconds(Date.now()),
       to: PUBLIC_COLLECTION,
@@ -784,7 +817,7 @@ export async function sendProfileUpdate(userId: number, actor: Actor): Promise<v
       if (followerActor && followerActor.inbox_url) {
         try {
           await context.sendActivity(
-            { identifier: userId.toString() },
+            { identifier: user.username },
             { 
               id: new URL(followerActor.uri),
               inboxId: new URL(followerActor.inbox_url)
