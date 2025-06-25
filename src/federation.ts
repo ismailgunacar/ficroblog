@@ -10,6 +10,7 @@ import {
   Person,
   PUBLIC_COLLECTION,
   Undo,
+  Update,
   createFederation,
   exportJwk,
   generateCryptoKeyPair,
@@ -587,5 +588,87 @@ federation
       logger.error("Failed to process announce activity", { error });
     }
   });
+
+// Function to send profile update to followers
+export async function sendProfileUpdate(userId: number, actor: Actor): Promise<void> {
+  try {
+    await connectToDatabase();
+    const followsCollection = getFollowsCollection();
+    const actorsCollection = getActorsCollection();
+    
+    // Get all followers for this user
+    const followers = await followsCollection.find({ following_id: userId }).toArray();
+    
+    if (followers.length === 0) {
+      logger.debug("No followers to notify of profile update", { userId });
+      return;
+    }
+    
+    // Create the context for sending activities
+    const context = federation.createContext(new URL("https://gunac.ar"), userId);
+    
+    const username = actor.handle.split('@')[1];
+    const actorUrl = new URL(`https://gunac.ar/users/${username}`);
+    
+    const person = new Person({
+      id: actorUrl,
+      name: actor.name,
+      summary: actor.summary,
+      preferredUsername: username,
+      inbox: new URL(actor.inbox_url),
+      endpoints: new Endpoints({
+        sharedInbox: actor.shared_inbox_url ? new URL(actor.shared_inbox_url) : undefined,
+      }),
+      url: actor.url ? new URL(actor.url) : undefined,
+      published: Temporal.Instant.fromEpochMilliseconds(actor.created.getTime()),
+    });
+    
+    const update = new Update({
+      id: new URL(`https://gunac.ar/activities/update/${Date.now()}`),
+      actor: actorUrl,
+      object: person,
+      published: Temporal.Instant.fromEpochMilliseconds(Date.now()),
+      to: PUBLIC_COLLECTION,
+    });
+    
+    // Send to all followers
+    for (const follow of followers) {
+      const followerActor = await actorsCollection.findOne({ id: follow.follower_id });
+      
+      if (followerActor && followerActor.inbox_url) {
+        try {
+          await context.sendActivity(
+            { identifier: userId.toString() },
+            { 
+              id: new URL(followerActor.uri),
+              inboxId: new URL(followerActor.inbox_url)
+            },
+            update
+          );
+          
+          logger.debug("Profile update sent to follower", { 
+            followerId: followerActor.id,
+            followerUri: followerActor.uri
+          });
+        } catch (error) {
+          logger.error("Failed to send profile update to follower", {
+            followerId: followerActor.id,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      }
+    }
+    
+    logger.info("Profile update sent to followers", { 
+      userId, 
+      followerCount: followers.length 
+    });
+  } catch (error) {
+    logger.error("Failed to send profile update", { 
+      userId, 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+  }
+}
 
 export default federation;

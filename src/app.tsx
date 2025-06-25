@@ -4,7 +4,7 @@ import { getLogger } from "@logtape/logtape";
 import { stringifyEntities } from "stringify-entities";
 import { Create, Follow, isActor, Note, Like, Announce, Undo, PUBLIC_COLLECTION } from "@fedify/fedify";
 import * as bcrypt from "bcrypt";
-import fedi from "./federation.ts";
+import fedi, { sendProfileUpdate } from "./federation.ts";
 import { connectToDatabase, getUsersCollection, getActorsCollection, getPostsCollection, getFollowsCollection, getLikesCollection, getRepostsCollection } from "./db.ts";
 import { getNextSequence } from "./utils.ts";
 import type { Actor, Post, User } from "./schema.ts";
@@ -732,6 +732,18 @@ app.post("/profile/edit", requireAuth(), async (c) => {
     if (result.matchedCount === 0) {
       logger.error("Actor not found for user during update", { userId: currentUser.userId });
       return c.text("Actor not found", 404);
+    }
+    
+    // Get the updated actor data to send the ActivityPub update
+    const updatedActor = await actorsCollection.findOne({ user_id: currentUser.userId });
+    if (updatedActor) {
+      // Send profile update to followers via ActivityPub
+      sendProfileUpdate(currentUser.userId, updatedActor as Actor).catch(error => {
+        logger.error("Failed to send ActivityPub profile update", { 
+          userId: currentUser.userId, 
+          error: error instanceof Error ? error.message : String(error) 
+        });
+      });
     }
     
     logger.info("Profile updated", { userId: currentUser.userId, name, bio });
