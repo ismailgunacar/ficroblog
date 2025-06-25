@@ -1,5 +1,6 @@
 import type { FC } from "hono/jsx";
 import type { Actor, Post, User } from "./schema.ts";
+import { makeLinksClickable } from "./utils.ts";
 
 export const Layout: FC = (props) => (
   <html lang="en">
@@ -217,7 +218,12 @@ export const Profile: FC<ProfileProps> = ({
         {" "}&middot;{" "}
         <a href="/profile/edit">Edit Profile</a>
       </p>
-      {bio && <p style="font-style: italic; margin-top: 0.5rem;">{bio}</p>}
+      {bio && (
+        <div 
+          style="font-style: italic; margin-top: 0.5rem;"
+          dangerouslySetInnerHTML={{ __html: makeLinksClickable(bio) }}
+        />
+      )}
     </hgroup>
   </>
 );
@@ -251,7 +257,12 @@ export const Home: FC<HomeProps> = ({ user, posts, isAuthenticated = false }) =>
           </>
         )}
       </p>
-      {user.summary && <p style="font-style: italic; margin-top: 0.5rem;">{user.summary}</p>}
+      {user.summary && (
+        <div 
+          style="font-style: italic; margin-top: 0.5rem;"
+          dangerouslySetInnerHTML={{ __html: makeLinksClickable(user.summary) }}
+        />
+      )}
     </hgroup>
     
     {/* Only show follow form and post form when authenticated */}
@@ -380,7 +391,7 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
         <ActorLink actor={post} />
       </header>
       {/* biome-ignore lint/security/noDangerouslySetInnerHtml: */}
-      <div dangerouslySetInnerHTML={{ __html: post.content }} />
+      <div dangerouslySetInnerHTML={{ __html: makeLinksClickable(post.content) }} />
       <footer>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <a href={post.url ?? post.uri}>
@@ -461,14 +472,28 @@ export interface FollowerListProps {
 
 export const FollowerList: FC<FollowerListProps> = ({ followers }) => (
   <>
+    <nav>
+      <a href="/" class="secondary">← Back to Profile</a>
+    </nav>
     <h2>Followers</h2>
-    <ul>
-      {followers.map((follower) => (
-        <li key={follower.id}>
-          <ActorLink actor={follower} />
-        </li>
-      ))}
-    </ul>
+    {followers.length === 0 ? (
+      <p>
+        <small>No followers yet. Share your profile to get started!</small>
+      </p>
+    ) : (
+      <div>
+        <p>
+          <small>{followers.length} follower{followers.length !== 1 ? 's' : ''}</small>
+        </p>
+        <ul>
+          {followers.map((follower) => (
+            <li key={follower.id}>
+              <ActorLink actor={follower} />
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
   </>
 );
 
@@ -478,14 +503,28 @@ export interface FollowingListProps {
 
 export const FollowingList: FC<FollowingListProps> = ({ following }) => (
   <>
+    <nav>
+      <a href="/" class="secondary">← Back to Profile</a>
+    </nav>
     <h2>Following</h2>
-    <ul>
-      {following.map((actor) => (
-        <li key={actor.id}>
-          <ActorLink actor={actor} />
-        </li>
-      ))}
-    </ul>
+    {following.length === 0 ? (
+      <p>
+        <small>Not following anyone yet. Find interesting accounts to follow!</small>
+      </p>
+    ) : (
+      <div>
+        <p>
+          <small>{following.length} following</small>
+        </p>
+        <ul>
+          {following.map((actor) => (
+            <li key={actor.id}>
+              <ActorLink actor={actor} />
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
   </>
 );
 
@@ -494,34 +533,58 @@ export interface ActorLinkProps {
 }
 
 export const ActorLink: FC<ActorLinkProps> = ({ actor }) => {
-  const href = actor.url ?? actor.uri;
-  return actor.name == null ? (
-    <a href={href} class="secondary">
-      {actor.handle}
-    </a>
-  ) : (
+  if (!actor) {
+    return <span>Unknown user</span>;
+  }
+  
+  // For local actors (user_id is set OR handle contains the current domain), link to local user page
+  // For remote actors, link to their external profile
+  let href: string;
+  let isLocal = false;
+  
+  // Check if this is a local actor
+  if (actor.user_id) {
+    isLocal = true;
+  } else if (actor.handle) {
+    // Also check if the handle contains the local domain (gunac.ar)
+    const handleDomain = actor.handle.split('@')[2] || actor.handle.split('@')[1];
+    if (handleDomain === 'gunac.ar' || handleDomain === 'localhost:8000') {
+      isLocal = true;
+    }
+  }
+  
+  if (isLocal) {
+    // Local user - extract username from handle and link to local page
+    const username = actor.handle.split('@')[1] || actor.handle.split('@')[0];
+    href = `/users/${username}`;
+  } else {
+    // Remote user - link to their external profile
+    href = actor.url ?? actor.uri;
+  }
+  
+  const handle = actor.handle || `@unknown@unknown`;
+  const name = actor.name;
+  
+  return name ? (
     <>
-      <a href={href}>{actor.name}</a>{" "}
+      <a href={href}><strong>{name}</strong></a>{" "}
       <small>
         (
         <a href={href} class="secondary">
-          {actor.handle}
+          {handle}
         </a>
         )
       </small>
     </>
+  ) : (
+    <a href={href} class="secondary">
+      {handle}
+    </a>
   );
 };
 
 // Profile edit form
-export const ProfileEditForm: FC<{ name: string; bio?: string }> = ({ name, bio }) => {
-  console.log('🎨 ProfileEditForm Debug:');
-  console.log('   name prop:', name);
-  console.log('   bio prop:', bio);
-  console.log('   bio type:', typeof bio);
-  console.log('   bio length:', bio?.length || 0);
-  
-  return (
+export const ProfileEditForm: FC<{ name: string; bio?: string }> = ({ name, bio }) => (
   <>
     <h2>Edit Profile</h2>
     <form method="post" action="/profile/edit">
@@ -544,5 +607,4 @@ export const ProfileEditForm: FC<{ name: string; bio?: string }> = ({ name, bio 
       <input type="submit" value="Update Profile" />
     </form>
   </>
-  );
-};
+);

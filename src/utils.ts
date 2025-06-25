@@ -103,3 +103,28 @@ export async function createIndexes(): Promise<void> {
     throw error;
   }
 }
+
+// Helper to make URLs clickable in text content
+export function makeLinksClickable(text: string): string {
+  if (!text) return text;
+  
+  // Regular expression to match URLs
+  // This matches http://, https://, www., and simple domain.tld patterns
+  const urlRegex = /(https?:\/\/[^\s<>"{}|\\^`[\]]+|www\.[^\s<>"{}|\\^`[\]]+)/gi;
+  
+  return text.replace(urlRegex, (url) => {
+    // Skip if already part of an HTML tag
+    if (url.includes('<') || url.includes('>')) {
+      return url;
+    }
+    
+    // Ensure the URL has a protocol
+    let href = url;
+    if (!url.startsWith('http')) {
+      href = `https://${url}`;
+    }
+    
+    // Create a clickable link with security attributes
+    return `<a href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+  });
+}

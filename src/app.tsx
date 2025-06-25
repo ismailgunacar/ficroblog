@@ -128,6 +128,7 @@ app.get("/", async (c) => {
       uri: actor.uri,
       handle: actor.handle,
       name: actor.name,
+      user_id: actor.user_id, // Include user_id for local actor detection
       inbox_url: actor.inbox_url,
       shared_inbox_url: actor.shared_inbox_url,
       url: actor.url || post.url, // Prefer post URL if available
@@ -262,7 +263,6 @@ app.post("/setup", async (c) => {
   const form = await c.req.formData();
   const username = form.get("username");
   const name = form.get("name");
-  const bio = form.get("bio");
   const password = form.get("password");
 
   if (typeof username !== "string" || !username.match(/^[a-z0-9_-]{1,50}$/)) {
@@ -275,17 +275,8 @@ app.post("/setup", async (c) => {
     return c.redirect("/setup");
   }
 
-  // Bio is optional, but if provided should be a string
-  const bioText = (typeof bio === "string" && bio.trim() !== "") ? bio.trim() : null;
-
   const url = new URL(c.req.url);
-  // Use environment variable for domain if set, otherwise use request host
-  const domain = process.env.DOMAIN || url.host;
-  const handle = `@${username}@${domain}`;
-  
-  // Log the domain configuration for debugging
-  console.log(`🌐 Domain configuration: env=${process.env.DOMAIN}, request=${url.host}, effective=${domain}`);
-  console.log(`🏷️  Generated handle: ${handle}`);
+  const handle = `@${username}@${url.host}`;
   const ctx = fedi.createContext(c.req.raw, undefined);
 
   try {
@@ -313,7 +304,6 @@ app.post("/setup", async (c) => {
       uri: ctx.getActorUri(username).href,
       handle,
       name,
-      summary: bioText, // Add bio/summary for fediverse compatibility
       inbox_url: ctx.getInboxUri(username).href,
       shared_inbox_url: ctx.getInboxUri().href,
       url: ctx.getActorUri(username).href,
@@ -332,7 +322,7 @@ app.post("/setup", async (c) => {
 });
 
 // User profile page
-app.get("/users/:username", requireAuth(), async (c) => {
+app.get("/users/:username", async (c) => {
   await connectToDatabase();
   const usersCollection = getUsersCollection();
   const actorsCollection = getActorsCollection();
@@ -348,6 +338,10 @@ app.get("/users/:username", requireAuth(), async (c) => {
   if (!actor) return c.notFound();
 
   const userWithActor = { ...user, ...actor };
+
+  // Check if current visitor is authenticated
+  const currentUser = getCurrentUser(c);
+  const isAuthenticated = !!currentUser;
 
   // Get follower and following counts
   const followersCount = await followsCollection.countDocuments({ following_id: actor.id });
@@ -384,7 +378,7 @@ app.get("/users/:username", requireAuth(), async (c) => {
         following={followingCount}
         followers={followersCount}
       />
-      <PostList posts={postsWithActors} isAuthenticated={true} />
+      <PostList posts={postsWithActors} isAuthenticated={isAuthenticated} />
     </Layout>
   );
 });
@@ -456,7 +450,7 @@ app.post("/users/:username/posts", requireAuth(), async (c) => {
 });
 
 // Individual post page
-app.get("/users/:username/posts/:id", requireAuth(), async (c) => {
+app.get("/users/:username/posts/:id", async (c) => {
   await connectToDatabase();
   const usersCollection = getUsersCollection();
   const actorsCollection = getActorsCollection();
@@ -477,6 +471,10 @@ app.get("/users/:username/posts/:id", requireAuth(), async (c) => {
 
   const postWithActor = { ...post, ...actor, ...user } as Post & Actor & User;
 
+  // Check if current visitor is authenticated
+  const currentUser = getCurrentUser(c);
+  const isAuthenticated = !!currentUser;
+
   // Get follower and following counts
   const followersCount = await followsCollection.countDocuments({ following_id: actor.id });
   const followingCount = await followsCollection.countDocuments({ follower_id: actor.id });
@@ -491,6 +489,7 @@ app.get("/users/:username/posts/:id", requireAuth(), async (c) => {
         following={followingCount}
         followers={followersCount}
         post={postWithActor}
+        isAuthenticated={isAuthenticated}
       />
     </Layout>
   );
@@ -539,7 +538,7 @@ app.post("/users/:username/following", requireAuth(), async (c) => {
 });
 
 // Followers list
-app.get("/users/:username/followers", requireAuth(), async (c) => {
+app.get("/users/:username/followers", async (c) => {
   await connectToDatabase();
   const usersCollection = getUsersCollection();
   const actorsCollection = getActorsCollection();
@@ -578,7 +577,7 @@ app.get("/users/:username/followers", requireAuth(), async (c) => {
 });
 
 // Following list
-app.get("/users/:username/following", requireAuth(), async (c) => {
+app.get("/users/:username/following", async (c) => {
   await connectToDatabase();
   const usersCollection = getUsersCollection();
   const actorsCollection = getActorsCollection();
@@ -665,6 +664,85 @@ app.post("/login", async (c) => {
 app.get("/logout", async (c) => {
   destroySession(c);
   return c.redirect("/");
+});
+
+// Profile edit form
+app.get("/profile/edit", requireAuth(), async (c) => {
+  try {
+    await connectToDatabase();
+    const actorsCollection = getActorsCollection();
+    
+    const currentUser = getCurrentUser(c);
+    if (!currentUser) {
+      return c.redirect("/login");
+    }
+    
+    const actor = await actorsCollection.findOne({ user_id: currentUser.userId });
+    if (!actor) {
+      logger.error("Actor not found for user", { userId: currentUser.userId });
+      return c.text("Actor not found", 404);
+    }
+    
+    const html = (
+      <Layout title="Edit Profile" user={currentUser}>
+        <ProfileEditForm 
+          name={actor.name || actor.handle} 
+          bio={actor.summary} 
+        />
+      </Layout>
+    );
+    
+    return c.html(html);
+  } catch (error) {
+    logger.error("Profile edit form error", { error: error instanceof Error ? error.message : String(error) });
+    return c.text("Internal server error", 500);
+  }
+});
+
+// Handle profile edit form submission
+app.post("/profile/edit", requireAuth(), async (c) => {
+  try {
+    await connectToDatabase();
+    const actorsCollection = getActorsCollection();
+    
+    const currentUser = getCurrentUser(c);
+    if (!currentUser) {
+      return c.redirect("/login");
+    }
+    
+    const body = await c.req.parseBody();
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    const bio = typeof body.bio === "string" ? body.bio.trim() : "";
+    
+    if (!name) {
+      return c.text("Name is required", 400);
+    }
+    
+    // Update the actor with the new name and bio
+    const result = await actorsCollection.updateOne(
+      { user_id: currentUser.userId },
+      { 
+        $set: { 
+          name: name,
+          summary: bio || "" 
+        } 
+      }
+    );
+    
+    if (result.matchedCount === 0) {
+      logger.error("Actor not found for user during update", { userId: currentUser.userId });
+      return c.text("Actor not found", 404);
+    }
+    
+    logger.info("Profile updated", { userId: currentUser.userId, name, bio });
+    
+    // Redirect back to the user's profile page
+    return c.redirect(`/users/${currentUser.username}`);
+    
+  } catch (error) {
+    logger.error("Profile edit submission error", { error: error instanceof Error ? error.message : String(error) });
+    return c.text("Internal server error", 500);
+  }
 });
 
 // Like a post
@@ -875,79 +953,6 @@ app.post("/posts/:id/repost", requireAuth(), async (c) => {
   } catch (error) {
     logger.error("Failed to repost/unrepost post", { error });
     return c.json({ error: "Failed to process repost" }, 500);
-  }
-});
-
-// Profile edit page
-app.get("/profile/edit", requireAuth(), async (c) => {
-  await connectToDatabase();
-  const usersCollection = getUsersCollection();
-  const actorsCollection = getActorsCollection();
-
-  const currentUser = getCurrentUser(c);
-  if (!currentUser) {
-    return c.redirect("/login");
-  }
-
-  const user = await usersCollection.findOne({ id: currentUser.userId });
-  if (!user) {
-    return c.redirect("/login");
-  }
-
-  const actor = await actorsCollection.findOne({ user_id: user.id });
-  if (!actor) {
-    return c.redirect("/setup");
-  }
-
-  return c.html(
-    <Layout>
-      <ProfileEditForm name={actor.name || user.username} bio={actor.summary} />
-    </Layout>
-  );
-});
-
-// Profile edit form submission
-app.post("/profile/edit", requireAuth(), async (c) => {
-  await connectToDatabase();
-  const usersCollection = getUsersCollection();
-  const actorsCollection = getActorsCollection();
-
-  const currentUser = getCurrentUser(c);
-  if (!currentUser) {
-    return c.redirect("/login");
-  }
-
-  const user = await usersCollection.findOne({ id: currentUser.userId });
-  if (!user) {
-    return c.redirect("/login");
-  }
-
-  const form = await c.req.formData();
-  const name = form.get("name");
-  const bio = form.get("bio");
-
-  if (typeof name !== "string" || name.trim() === "") {
-    return c.redirect("/profile/edit");
-  }
-
-  // Bio is optional
-  const bioText = (typeof bio === "string" && bio.trim() !== "") ? bio.trim() : null;
-
-  try {
-    await actorsCollection.updateOne(
-      { user_id: user.id },
-      {
-        $set: {
-          name: name.trim(),
-          summary: bioText
-        }
-      }
-    );
-
-    return c.redirect(`/users/${user.username}`);
-  } catch (error) {
-    logger.error("Failed to update profile", { error });
-    return c.redirect("/profile/edit");
   }
 });
 

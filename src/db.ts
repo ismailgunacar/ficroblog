@@ -1,7 +1,7 @@
 import { MongoClient, Db, Collection } from "mongodb";
 
 // MongoDB connection string from environment variable
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/marco3";
+const MONGODB_URI = process.env.MONGODB_URI;
 
 let client: MongoClient | null = null;
 let db: Db | null = null;
@@ -60,12 +60,12 @@ export async function connectToDatabase(): Promise<Db> {
         console.error("   - IP address not whitelisted in Atlas Network Access");
       }
       
-      if (error.message.includes('ENOTFOUND') || error.message.includes('timeout')) {
-        console.error("🌐 Network Error: Cannot reach MongoDB Atlas");
+      if (error.message.includes('timeout')) {
+        console.error("⏰ Timeout Error: Connection timeout");
         console.error("📝 Possible causes:");
-        console.error("   - Server IP not whitelisted in Atlas Network Access");
-        console.error("   - Firewall blocking outbound connections on port 27017");
-        console.error("   - DNS resolution issues");
+        console.error("   - Network connectivity issues");
+        console.error("   - IP address not whitelisted in Atlas Network Access");
+        console.error("   - MongoDB Atlas cluster may be paused or unavailable");
       }
     }
     throw error;
@@ -123,65 +123,4 @@ export function getRepostsCollection(): Collection {
 
 export function getCountersCollection(): Collection {
   return getDatabase().collection("counters");
-}
-
-// Test database connection and verify collections
-export async function testDatabaseConnection(): Promise<boolean> {
-  try {
-    const database = getDatabase();
-    
-    // Test basic connection
-    await database.command({ ping: 1 });
-    console.log("📊 Database ping successful");
-    
-    // List all collections
-    const collections = await database.listCollections().toArray();
-    console.log("📂 Available collections:", collections.map(c => c.name));
-    
-    // Test access to main collections
-    const mainCollections = ['users', 'actors', 'keys', 'follows', 'posts', 'counters'];
-    for (const collectionName of mainCollections) {
-      const collection = database.collection(collectionName);
-      const count = await collection.countDocuments();
-      console.log(`   ${collectionName}: ${count} documents`);
-    }
-    
-    return true;
-  } catch (error) {
-    console.error("❌ Database connection test failed:", error);
-    return false;
-  }
-}
-
-// Network diagnostics for deployment troubleshooting
-export async function diagnoseNetworkConnection(): Promise<void> {
-  console.log("🔍 Running network diagnostics...");
-  
-  try {
-    // Get server's public IP
-    const { exec } = await import('child_process');
-    const { promisify } = await import('util');
-    const execAsync = promisify(exec);
-    
-    try {
-      const { stdout } = await execAsync('curl -s ifconfig.me || curl -s ipinfo.io/ip || echo "Could not detect IP"');
-      console.log("🌐 Server public IP:", stdout.trim());
-    } catch (error) {
-      console.log("⚠️  Could not detect server IP");
-    }
-    
-    // Test DNS resolution for MongoDB Atlas
-    try {
-      const { lookup } = await import('dns');
-      const lookupAsync = promisify(lookup);
-      const atlasHost = 'cluster0.isg22.mongodb.net';
-      const result = await lookupAsync(atlasHost);
-      console.log(`🔍 DNS resolution for ${atlasHost}:`, result.address);
-    } catch (error) {
-      console.error("❌ DNS resolution failed for MongoDB Atlas:", error);
-    }
-    
-  } catch (error) {
-    console.error("❌ Network diagnostics failed:", error);
-  }
 }
