@@ -451,35 +451,10 @@ app.post("/", requireAuth(), async (c) => {
     await postsCollection.insertOne(newPost);
     logger.info(`Post created successfully: ${postId} by user ${user.username}`);
 
-    // Send Create(Note) activity to followers
+    // Send Create(Note) activity to followers using robust federation logic
     try {
-      const noteArgs = { identifier: user.username, id: postId.toString() };
-      console.log("About to get Note object with args:", noteArgs);
-      const note = await ctx.getObject(Note, noteArgs);
-      console.log("Note object result:", {
-        note: !!note,
-        id: note?.id?.href,
-        attributionId: note?.attributionId?.href,
-        published: note?.published?.toString()
-      });
-      
-      if (note) {
-        await ctx.sendActivity(
-          { identifier: user.username },
-          "followers",
-          new Create({
-            id: new URL(ctx.getObjectUri(Note, { identifier: user.username, id: postId.toString() }).href.replace('/posts/', '/activities/create/')),
-            actor: ctx.getActorUri(user.username),
-            object: note,
-            to: PUBLIC_COLLECTION,
-            cc: ctx.getFollowersUri(user.username),
-            published: note.published,
-          })
-        );
-        logger.info("ActivityPub Create activity sent successfully", { postId });
-      } else {
-        logger.error("Failed to get note object for Create activity", { postId });
-      }
+      await sendPostToFollowers(user.id, newPost as Post, actor as Actor);
+      logger.info("ActivityPub Create activity sent successfully", { postId });
     } catch (activityError) {
       logger.error("Failed to send ActivityPub Create activity", { 
         activityError: activityError instanceof Error ? activityError.message : String(activityError),
@@ -780,28 +755,10 @@ app.post("/users/:username/posts", requireAuth(), async (c) => {
 
     await postsCollection.insertOne(newPost);
 
-    // Send Create(Note) activity to followers
+    // Send Create(Note) activity to followers using robust federation logic
     try {
-      const noteArgs = { identifier: username, id: postId.toString() };
-      const note = await ctx.getObject(Note, noteArgs);
-      
-      if (note) {
-        await ctx.sendActivity(
-          { identifier: username },
-          "followers",
-          new Create({
-            id: new URL(ctx.getObjectUri(Note, { identifier: username, id: postId.toString() }).href.replace('/posts/', '/activities/create/')),
-            actor: ctx.getActorUri(username),
-            object: note,
-            to: PUBLIC_COLLECTION,
-            cc: ctx.getFollowersUri(username),
-            published: note.published,
-          })
-        );
-        logger.info("ActivityPub Create activity sent successfully", { postId });
-      } else {
-        logger.error("Failed to get note object for Create activity", { postId });
-      }
+      await sendPostToFollowers(user.id, newPost as Post, actor as Actor);
+      logger.info("ActivityPub Create activity sent successfully", { postId });
     } catch (activityError) {
       logger.error("Failed to send ActivityPub Create activity", { 
         activityError: activityError instanceof Error ? activityError.message : String(activityError),
