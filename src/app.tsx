@@ -591,123 +591,56 @@ app.get("/users/:username", async (c) => {
   const currentUser = getCurrentUser(c);
   const isAuthenticated = !!currentUser;
 
-  // Get follower and following counts
-  const followersCount = await followsCollection.countDocuments({ following_id: actor.id });
-  const followingCount = await followsCollection.countDocuments({ follower_id: actor.id });
-
-  // --- Robust recursive fetch for all posts and replies ---
-  // 1. Fetch all post IDs authored by the user
-  let allPostIds = await postsCollection.distinct("id", { actor_id: actor.id, deleted: { $ne: true } });
-  let fetchedIds = new Set(allPostIds);
-  let toFetch = [...allPostIds];
-  let allPosts: any[] = [];
-
-  // 2. Iteratively fetch replies to any post in the set, until no new replies are found
-  while (toFetch.length > 0) {
-    const replies = await postsCollection.find({ reply_to: { $in: toFetch }, deleted: { $ne: true } }).toArray();
-    const newReplies = replies.filter(r => !fetchedIds.has(r.id));
-    if (newReplies.length === 0) break;
-    newReplies.forEach(r => fetchedIds.add(r.id));
-    toFetch = newReplies.map(r => r.id);
-    allPosts.push(...newReplies);
-  }
-
-  // 3. Fetch all original posts by the user
-  const userPosts = await postsCollection.find({ actor_id: actor.id, deleted: { $ne: true } }).toArray();
-  allPosts.push(...userPosts);
-
-  // 4. Remove duplicates
-  const postMapById = new Map<number, any>();
-  allPosts.forEach(post => postMapById.set(post.id, post));
-  const allUniquePosts = Array.from(postMapById.values());
-
-  // 5. Enrich posts with actors, likes, reposts, like_actors, repost_actors
-  const postIds = allUniquePosts.map(p => p.id);
-  const [actors, likes, reposts] = await Promise.all([
-    actorsCollection.find({}).toArray(),
-    getLikesCollection().find({ post_id: { $in: postIds } }).toArray(),
-    getRepostsCollection().find({ post_id: { $in: postIds } }).toArray(),
-  ]);
-  const actorMap = new Map(actors.map(a => [a.id, a]));
-  const likesByPost = new Map<number, any[]>();
-  likes.forEach(like => {
-    if (!likesByPost.has(like.post_id)) likesByPost.set(like.post_id, []);
-    likesByPost.get(like.post_id)!.push(like);
-  });
-  const repostsByPost = new Map<number, any[]>();
-  reposts.forEach(repost => {
-    if (!repostsByPost.has(repost.post_id)) repostsByPost.set(repost.post_id, []);
-    repostsByPost.get(repost.post_id)!.push(repost);
-  });
-  // Like/repost actors
-  const likeActorIds = Array.from(new Set(likes.map(l => l.actor_id)));
-  const repostActorIds = Array.from(new Set(reposts.map(r => r.actor_id)));
-  const [likeActors, repostActors] = await Promise.all([
-    actorsCollection.find({ id: { $in: likeActorIds } }).toArray(),
-    actorsCollection.find({ id: { $in: repostActorIds } }).toArray(),
-  ]);
-  const likeActorMap = new Map(likeActors.map(a => [a.id, a]));
-  const repostActorMap = new Map(repostActors.map(a => [a.id, a]));
-
-  // 6. Attach actor, likes, reposts, like_actors, repost_actors to each post
-  const postsWithActors = allUniquePosts.map(post => ({
-    ...post,
-    actor: actorMap.get(post.actor_id) ? [actorMap.get(post.actor_id)] : [],
-    // Attach actor fields directly for ActorLink compatibility
-    handle: actorMap.get(post.actor_id)?.handle ?? '',
-    name: actorMap.get(post.actor_id)?.name ?? '',
-    user_id: actorMap.get(post.actor_id)?.user_id ?? null,
-    url: actorMap.get(post.actor_id)?.url ?? '',
-    uri: actorMap.get(post.actor_id)?.uri ?? '',
-    likes: likesByPost.get(post.id) || [],
-    like_actors: (likesByPost.get(post.id) || []).map(l => likeActorMap.get(l.actor_id)).filter(Boolean),
-    reposts: repostsByPost.get(post.id) || [],
-    repost_actors: (repostsByPost.get(post.id) || []).map(r => repostActorMap.get(r.actor_id)).filter(Boolean),
-    parent_post: post.reply_to ? allUniquePosts.find(p => p.id === post.reply_to) : undefined,
-  }));
-
-  // 7. Recursively nest replies for each post (profile page)
-  function nestReplies(posts: any[]): any[] {
-    const postMap = new Map<number, any>();
-    posts.forEach(post => postMap.set(post.id, { ...post, replies: [] }));
-    const roots: any[] = [];
-    posts.forEach(post => {
-      // Prevent self-reply and only nest if parent exists and is not self
-      if (
-        post.reply_to &&
-        post.reply_to !== post.id &&
-        postMap.has(post.reply_to)
-      ) {
-        postMap.get(post.reply_to).replies.push(postMap.get(post.id));
-      } else {
-        roots.push(postMap.get(post.id));
-      }
-    });
-    // Sort root posts (descending, newest first)
-    roots.sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime());
-    // Sort replies (ascending, oldest first)
-    for (const post of postMap.values()) {
-      if (post.replies && post.replies.length > 1) {
-        post.replies.sort((a: any, b: any) => new Date(a.created).getTime() - new Date(b.created).getTime());
-      }
+  // If authenticated, fetch the user and actor for the session
+  let currentActorId: number | undefined = undefined;
+  if (currentUser && currentUser.username) {
+    const currentUserDb = await usersCollection.findOne({ username: currentUser.username });
+    if (currentUserDb) {
+      const currentActor = await actorsCollection.findOne({ user_id: currentUserDb.id });
+      if (currentActor) currentActorId = currentActor.id;
     }
-    return roots;
   }
 
-  // Nest the replies in the posts
-  const nestedPosts = nestReplies(postsWithActors);
+  const likesCollection = getLikesCollection();
+  const repostsCollection = getRepostsCollection();
+
+  // Get likes and reposts for this post
+  const likes = await likesCollection.find({ post_id: post.id }).toArray();
+  const reposts = await repostsCollection.find({ post_id: post.id }).toArray();
+
+  // Get like and repost actors
+  const likeActorIds = likes.map(l => l.actor_id);
+  const repostActorIds = reposts.map(r => r.actor_id);
+  const like_actors = likeActorIds.length > 0 ? await actorsCollection.find({ id: { $in: likeActorIds } }).toArray() as Actor[] : [];
+  const repost_actors = repostActorIds.length > 0 ? await actorsCollection.find({ id: { $in: repostActorIds } }).toArray() as Actor[] : [];
+
+  // Compose the post object with all required fields, then remove _id
+  const postWithActor = {
+    ...post,
+    ...actor,
+    ...user,
+    likesCount: likes.length,
+    repostsCount: reposts.length,
+    like_actors,
+    repost_actors,
+    isLikedByUser: currentActorId ? likes.some(l => l.actor_id === currentActorId) : false,
+    isRepostedByUser: currentActorId ? reposts.some(r => r.actor_id === currentActorId) : false,
+  };
+  // Remove only the _id field if present
+  const { _id, ...postWithActorClean } = postWithActor;
 
   return c.html(
     <Layout>
-      <Profile
+      <PostPage
         name={actor.name ?? user.username}
         username={user.username}
         handle={actor.handle}
         bio={actor.summary}
         following={followingCount}
         followers={followersCount}
+        post={postWithActorClean}
+        isAuthenticated={isAuthenticated}
       />
-      <PostList posts={nestedPosts} isAuthenticated={isAuthenticated} />
     </Layout>
   );
 });
@@ -794,15 +727,51 @@ app.get("/users/:username/posts/:id", async (c) => {
   const post = await postsCollection.findOne({ id: postId, actor_id: actor.id });
   if (!post) return c.notFound();
 
-  const postWithActor = { ...post, ...actor, ...user } as Post & Actor & User;
-
-  // Check if current visitor is authenticated
-  const currentUser = getCurrentUser(c);
-  const isAuthenticated = !!currentUser;
-
   // Get follower and following counts
   const followersCount = await followsCollection.countDocuments({ following_id: actor.id });
   const followingCount = await followsCollection.countDocuments({ follower_id: actor.id });
+
+  // Check if current visitor is authenticated
+  const currentUserSession = getCurrentUser(c);
+  const isAuthenticated = !!currentUserSession;
+
+  // If authenticated, fetch the user and actor for the session
+  let currentActorId: number | undefined = undefined;
+  if (currentUserSession && currentUserSession.username) {
+    const currentUserDb = await usersCollection.findOne({ username: currentUserSession.username });
+    if (currentUserDb) {
+      const currentActor = await actorsCollection.findOne({ user_id: currentUserDb.id });
+      if (currentActor) currentActorId = currentActor.id;
+    }
+  }
+
+  const likesCollection = getLikesCollection();
+  const repostsCollection = getRepostsCollection();
+
+  // Get likes and reposts for this post
+  const likes = await likesCollection.find({ post_id: post.id }).toArray();
+  const reposts = await repostsCollection.find({ post_id: post.id }).toArray();
+
+  // Get like and repost actors
+  const likeActorIds = likes.map(l => l.actor_id);
+  const repostActorIds = reposts.map(r => r.actor_id);
+  const like_actors = likeActorIds.length > 0 ? await actorsCollection.find({ id: { $in: likeActorIds } }).toArray() as Actor[] : [];
+  const repost_actors = repostActorIds.length > 0 ? await actorsCollection.find({ id: { $in: repostActorIds } }).toArray() as Actor[] : [];
+
+  // Compose the post object with all required fields, then remove _id
+  const postWithActor = {
+    ...post,
+    ...actor,
+    ...user,
+    likesCount: likes.length,
+    repostsCount: reposts.length,
+    like_actors,
+    repost_actors,
+    isLikedByUser: currentActorId ? likes.some(l => l.actor_id === currentActorId) : false,
+    isRepostedByUser: currentActorId ? reposts.some(r => r.actor_id === currentActorId) : false,
+  };
+  // Remove only the _id field if present
+  const { _id, ...postWithActorClean } = postWithActor;
 
   return c.html(
     <Layout>
@@ -813,7 +782,7 @@ app.get("/users/:username/posts/:id", async (c) => {
         bio={actor.summary}
         following={followingCount}
         followers={followersCount}
-        post={postWithActor}
+        post={postWithActorClean}
         isAuthenticated={isAuthenticated}
       />
     </Layout>

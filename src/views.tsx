@@ -671,7 +671,7 @@ export const PostPage: FC<PostPageProps> = (props) => (
       following={props.following}
       followers={props.followers}
     />
-    <PostView post={props.post} />
+    <PostView post={props.post} isAuthenticated={props.isAuthenticated} />
   </>
 );
 
