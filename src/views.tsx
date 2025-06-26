@@ -92,17 +92,6 @@ export const Layout: FC<{ user?: User & Actor; isAuthenticated?: boolean; childr
       </style>
     </head>
     <body>
-      <header style="padding: 1rem 0; text-align: center;">
-        {props.user ? (
-          <a href="/" style="font-size: 1.5rem; font-weight: bold; text-decoration: none; color: inherit;">
-            {props.user.name}
-          </a>
-        ) : (
-          <a href="/" style="font-size: 1.5rem; font-weight: bold; text-decoration: none; color: inherit;">
-            Marco3
-          </a>
-        )}
-      </header>
       <main class="container">{props.children}</main>
       
       {/* Prevent CSS size changes after external stylesheet loads */}
@@ -253,7 +242,7 @@ export const Home: FC<HomeProps> = ({ user, posts, isAuthenticated = false }) =>
     {/* Profile header with bio */}
     <hgroup>
       <h1>
-        <a href={`/users/${user.username}`}>{user.name}</a>
+        <a href="/">{user.name}</a>
       </h1>
       <p>
         <span style="user-select: all;">{user.handle}</span>
