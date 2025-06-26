@@ -818,65 +818,6 @@ export async function sendPostToFollowers(userId: number, post: Post, actor: Act
     let inReplyToUri: string | undefined = undefined;
     if (post.reply_to) {
       const parent = await postsCollection.findOne({ id: post.reply_to });
-      if (parent && parent.uri) {
-        inReplyToUri = parent.uri;
-      } else {
-        inReplyToUri = context.getObjectUri(Note, { identifier: user.username, id: post.reply_to.toString() }).toString();
-      }
-    }
-
-    const note = new Note({
-      id: context.getObjectUri(Note, { identifier: user.username, id: post.id.toString() }),
-      attribution: context.getActorUri(user.username),
-      to: PUBLIC_COLLECTION,
-      cc: context.getFollowersUri(user.username),
-      content: post.content,
-      mediaType: "text/html",
-      published: Temporal.Instant.from(post.created.toISOString()),
-      url: context.getObjectUri(Note, { identifier: user.username, id: post.id.toString() }),
-      ...(inReplyToUri ? { inReplyTo: inReplyToUri } : {})
-    });
-    
-    const create = new Create({
-      id: new URL(context.getObjectUri(Note, { identifier: user.username, id: post.id.toString() }).href.replace('/posts/', '/activities/create/')),
-      actor: context.getActorUri(user.username),
-      object: note,
-      to: PUBLIC_COLLECTION,
-      cc: context.getFollowersUri(user.username),
-      published: Temporal.Instant.from(post.created.toISOString()),
-    });
-    
-    // Send to all followers
-    for (const follow of followers) {
-      const followerActor = await actorsCollection.findOne({ id: follow.follower_id });
-      if (followerActor && followerActor.inbox_url) {
-        try {
-          await context.sendActivity(
-            { identifier: user.username },
-            { 
-              id: new URL(followerActor.uri),
-              inboxId: new URL(followerActor.inbox_url)
-            },
-            create
-          );
-          logger.debug("Post sent to follower", { 
-            postId: post.id,
-            followerId: followerActor.id,
-            followerUri: followerActor.uri
-          });
-        } catch (error) {
-          logger.error("Failed to send post to follower", {
-            postId: post.id,
-            followerId: followerActor.id,
-            error: error instanceof Error ? error.message : String(error)
-          });
-        }
-      }
-    }
-
-    // --- PATCH: If this is a reply, and the parent post's actor is remote, send to their inbox too ---
-    if (post.reply_to) {
-      const parent = await postsCollection.findOne({ id: post.reply_to });
       logger.info("[Federation] Reply logic triggered", {
         postId: post.id,
         replyTo: post.reply_to,
@@ -884,7 +825,17 @@ export async function sendPostToFollowers(userId: number, post: Post, actor: Act
         parentActorId: parent?.actor_id,
         currentActorId: actor.id
       });
-      if (parent && parent.actor_id !== actor.id) {
+      if (!parent) {
+        logger.warn("[Federation] Parent post not found in DB for reply", {
+          postId: post.id,
+          replyTo: post.reply_to
+        });
+      } else if (parent.actor_id === actor.id) {
+        logger.info("[Federation] Parent actor is local user, skipping remote federation", {
+          postId: post.id,
+          parentActorId: parent.actor_id
+        });
+      } else {
         const parentActor = await actorsCollection.findOne({ id: parent.actor_id });
         logger.info("[Federation] Parent actor lookup", {
           parentActorId: parentActor?.id,
@@ -892,15 +843,51 @@ export async function sendPostToFollowers(userId: number, post: Post, actor: Act
           parentActorUri: parentActor?.uri,
           currentActorUri: actor.uri
         });
-        if (parentActor && parentActor.inbox_url && parentActor.uri !== actor.uri) {
+        if (!parentActor) {
+          logger.warn("[Federation] Parent actor not found in DB", {
+            postId: post.id,
+            parentActorId: parent.actor_id
+          });
+        } else if (!parentActor.inbox_url) {
+          logger.warn("[Federation] Parent actor has no inbox_url", {
+            postId: post.id,
+            parentActorId: parentActor.id,
+            parentActorUri: parentActor.uri
+          });
+        } else if (parentActor.uri === actor.uri) {
+          logger.info("[Federation] Parent actor is same as current actor, skipping federation", {
+            postId: post.id,
+            parentActorId: parentActor.id
+          });
+        } else {
           try {
+            // Create the Note and Create activity for federation
+            const note = new Note({
+              id: context.getObjectUri(Note, { identifier: user.username, id: post.id.toString() }),
+              attribution: context.getActorUri(user.username),
+              to: PUBLIC_COLLECTION,
+              cc: context.getFollowersUri(user.username),
+              content: post.content,
+              mediaType: "text/html",
+              published: Temporal.Instant.from(post.created.toISOString()),
+              url: context.getObjectUri(Note, { identifier: user.username, id: post.id.toString() }),
+              ...(inReplyToUri ? { inReplyTo: inReplyToUri } : {})
+            });
+            const createActivity = new Create({
+              id: new URL(context.getObjectUri(Note, { identifier: user.username, id: post.id.toString() }).href.replace('/posts/', '/activities/create/')),
+              actor: context.getActorUri(user.username),
+              object: note,
+              to: PUBLIC_COLLECTION,
+              cc: context.getFollowersUri(user.username),
+              published: Temporal.Instant.from(post.created.toISOString()),
+            });
             await context.sendActivity(
               { identifier: user.username },
               {
                 id: new URL(parentActor.uri),
                 inboxId: new URL(parentActor.inbox_url)
               },
-              create
+              createActivity
             );
             logger.info("Reply federated to remote parent actor's inbox", {
               postId: post.id,
