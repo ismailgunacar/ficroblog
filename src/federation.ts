@@ -941,4 +941,22 @@ export async function sendProfileUpdate(userId: number, actor: Actor): Promise<v
   }
 }
 
+// Send ActivityPub Delete activity for a post
+export async function sendDeleteActivity(post: Post) {
+  const actorsCollection = getActorsCollection();
+  const actor = await actorsCollection.findOne({ id: post.actor_id });
+  if (!actor) return;
+  const objectUri = post.uri;
+  const activity = {
+    '@context': 'https://www.w3.org/ns/activitystreams',
+    id: `${actor.uri}/activity/delete/${post.id}`,
+    type: 'Delete',
+    actor: actor.uri,
+    object: objectUri,
+    to: ['https://www.w3.org/ns/activitystreams#Public'],
+  };
+  // Use Fedify's federation API to send the activity
+  await federation.outbox.postActivity(actor, activity);
+}
+
 export default federation;

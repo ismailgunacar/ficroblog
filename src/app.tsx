@@ -4,7 +4,7 @@ import { getLogger } from "@logtape/logtape";
 import { stringifyEntities } from "stringify-entities";
 import { Create, Follow, isActor, Note, Like, Announce, Undo, PUBLIC_COLLECTION } from "@fedify/fedify";
 import * as bcrypt from "bcrypt";
-import fedi, { sendProfileUpdate, sendPostToFollowers, createCanonicalContext } from "./federation.ts";
+import fedi, { sendProfileUpdate, sendPostToFollowers, createCanonicalContext, sendDeleteActivity } from "./federation.ts";
 import { connectToDatabase, getUsersCollection, getActorsCollection, getPostsCollection, getFollowsCollection, getLikesCollection, getRepostsCollection } from "./db.ts";
 import { getNextSequence } from "./utils.ts";
 import type { Actor, Post, User } from "./schema.ts";
@@ -1320,6 +1320,26 @@ app.post("/posts/:id/repost", requireAuth(), async (c) => {
     logger.error("Failed to repost/unrepost post", { error });
     return c.json({ error: "Failed to process repost" }, 500);
   }
+});
+
+// Delete post (soft delete, federated)
+app.post("/posts/:id/delete", requireAuth(), async (c) => {
+  await connectToDatabase();
+  const postsCollection = getPostsCollection();
+  const actorsCollection = getActorsCollection();
+  const id = Number(c.req.param("id"));
+  const post = await postsCollection.findOne({ id });
+  if (!post) return c.text("Post not found", 404);
+  // Only allow deleting own posts
+  const currentUser = getCurrentUser(c);
+  if (!currentUser) return c.text("Forbidden", 403);
+  const actor = await actorsCollection.findOne({ user_id: currentUser.userId });
+  if (!actor || post.actor_id !== actor.id) return c.text("Forbidden", 403);
+  // Soft delete: set deleted flag and clear content
+  await postsCollection.updateOne({ id }, { $set: { deleted: true, content: "(deleted)" } });
+  // Send ActivityPub Delete
+  await sendDeleteActivity(post as Post);
+  return c.redirect("/");
 });
 
 export default app;

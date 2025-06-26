@@ -550,75 +550,80 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
               {timestamp.display}
             </time>
           </a>
-          {isAuthenticated && (
-            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-              <button
-                type="button"
-                onClick={handleLike}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.25rem',
-                  color: post.isLikedByUser ? 'red' : 'inherit'
-                }}
-                title={post.isLikedByUser ? 'Unlike' : 'Like'}
-              >
-                {post.isLikedByUser ? '❤️' : '🤍'} {post.likesCount || 0}
-              </button>
-              {renderActorList(post.like_actors)}
-              <button
-                type="button"
-                onClick={handleRepost}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.25rem',
-                  color: post.isRepostedByUser ? 'green' : 'inherit'
-                }}
-                title={post.isRepostedByUser ? 'Unrepost' : 'Repost'}
-              >
-                {post.isRepostedByUser ? '🔁' : '🔄'} {post.repostsCount || 0}
-              </button>
-              {renderActorList(post.repost_actors)}
-              {/* Reply button toggles reply form */}
-              <button
-                type="button"
-                data-reply-toggle={replyFormId}
-              >💬 Reply</button>
-            </div>
-          )}
-          {!isAuthenticated && (
-            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', color: 'var(--muted-color)' }}>
-              <span>🤍 {post.likesCount || 0}</span>
-              {renderActorList(post.like_actors)}
-              <span>🔄 {post.repostsCount || 0}</span>
-              {Array.isArray(post.repost_actors) && post.repost_actors.length > 0 && renderActorList(post.repost_actors)}
-            </div>
+          {isAuthenticated && !post.deleted && (
+            <form method="post" action={`/posts/${post.id}/delete`} style={{ display: 'inline' }} onSubmit={e => { if(!confirm('Delete this post?')) e.preventDefault(); }}>
+              <button type="submit" style={{ color: 'red', background: 'none', border: 'none', cursor: 'pointer' }}>🗑️ Delete</button>
+            </form>
           )}
         </div>
-        {/* Reply form (hidden by default) */}
         {isAuthenticated && (
-          <form id={replyFormId} method="post" action="/" style={{ display: 'none', marginTop: '0.5rem' }}>
-            <input type="hidden" name="reply_to" value={post.id} />
-            <textarea name="content" required rows={2} placeholder="Write a reply..." maxLength={500} />
-            <input type="submit" value="Reply" />
-          </form>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={handleLike}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+                color: post.isLikedByUser ? 'red' : 'inherit'
+              }}
+              title={post.isLikedByUser ? 'Unlike' : 'Like'}
+            >
+              {post.isLikedByUser ? '❤️' : '🤍'} {post.likesCount || 0}
+            </button>
+            {renderActorList(post.like_actors)}
+            <button
+              type="button"
+              onClick={handleRepost}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+                color: post.isRepostedByUser ? 'green' : 'inherit'
+              }}
+              title={post.isRepostedByUser ? 'Unrepost' : 'Repost'}
+            >
+              {post.isRepostedByUser ? '🔁' : '🔄'} {post.repostsCount || 0}
+            </button>
+            {renderActorList(post.repost_actors)}
+            {/* Reply button toggles reply form */}
+            <button
+              type="button"
+              data-reply-toggle={replyFormId}
+            >💬 Reply</button>
+          </div>
         )}
-        {/* Render replies recursively */}
-        {post.replies && post.replies.length > 0 && (
-          <div style={{ marginTop: '1rem', marginLeft: '1.5rem', borderLeft: '1px solid #eee', paddingLeft: '1rem' }}>
-            {post.replies.map((reply: any) => (
-              <PostView key={reply.id} post={reply} isAuthenticated={isAuthenticated} />
-            ))}
+        {!isAuthenticated && (
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', color: 'var(--muted-color)' }}>
+            <span>🤍 {post.likesCount || 0}</span>
+            {renderActorList(post.like_actors)}
+            <span>🔄 {post.repostsCount || 0}</span>
+            {Array.isArray(post.repost_actors) && post.repost_actors.length > 0 && renderActorList(post.repost_actors)}
           </div>
         )}
       </footer>
+      {/* Reply form (hidden by default) */}
+      {isAuthenticated && (
+        <form id={replyFormId} method="post" action="/" style={{ display: 'none', marginTop: '0.5rem' }}>
+          <input type="hidden" name="reply_to" value={post.id} />
+          <textarea name="content" required rows={2} placeholder="Write a reply..." maxLength={500} />
+          <input type="submit" value="Reply" />
+        </form>
+      )}
+      {/* Render replies recursively */}
+      {post.replies && post.replies.length > 0 && (
+        <div style={{ marginTop: '1rem', marginLeft: '1.5rem', borderLeft: '1px solid #eee', paddingLeft: '1rem' }}>
+          {post.replies.map((reply: any) => (
+            <PostView key={reply.id} post={reply} isAuthenticated={isAuthenticated} />
+          ))}
+        </div>
+      )}
     </article>
   );
 };

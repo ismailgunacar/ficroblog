@@ -51,6 +51,7 @@ export interface Post {
   is_repost?: boolean;
   // Optional reply field
   reply_to?: number; // If this is a reply, the parent post ID
+  deleted?: boolean; // Soft delete flag for ActivityPub Delete compatibility
 }
 
 export interface Like {
