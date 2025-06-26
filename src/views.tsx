@@ -210,7 +210,7 @@ export const Profile: FC<ProfileProps> = ({
   <>
     <hgroup>
       <h1>
-        <a href={`/users/${username}`}>{name}</a>
+        <a href="/">{name}</a>
       </h1>
       <p>
         <span style="user-select: all;">{handle}</span> &middot;{" "}
