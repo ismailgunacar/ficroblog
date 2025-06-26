@@ -1344,22 +1344,31 @@ app.post("/posts/:id/repost", requireAuth(), async (c) => {
 
 // Delete post (soft delete, federated)
 app.post("/posts/:id/delete", requireAuth(), async (c) => {
-  await connectToDatabase();
-  const postsCollection = getPostsCollection();
-  const actorsCollection = getActorsCollection();
-  const id = Number(c.req.param("id"));
-  const post = await postsCollection.findOne({ id });
-  if (!post) return c.text("Post not found", 404);
-  // Only allow deleting own posts
-  const currentUser = getCurrentUser(c);
-  if (!currentUser) return c.text("Forbidden", 403);
-  const actor = await actorsCollection.findOne({ user_id: currentUser.userId });
-  if (!actor || post.actor_id !== actor.id) return c.text("Forbidden", 403);
-  // Soft delete: set deleted flag and clear content
-  await postsCollection.updateOne({ id }, { $set: { deleted: true, content: "(deleted)" } });
-  // Send ActivityPub Delete
-  await sendDeleteActivity(post as Post);
-  return c.redirect("/");
+  try {
+    await connectToDatabase();
+    const postsCollection = getPostsCollection();
+    const actorsCollection = getActorsCollection();
+    const id = Number(c.req.param("id"));
+    const post = await postsCollection.findOne({ id });
+    if (!post) return c.text("Post not found", 404);
+    // Only allow deleting own posts
+    const currentUser = getCurrentUser(c);
+    if (!currentUser) return c.text("Forbidden", 403);
+    const actor = await actorsCollection.findOne({ user_id: currentUser.userId });
+    if (!actor || post.actor_id !== actor.id) return c.text("Forbidden", 403);
+    // Soft delete: set deleted flag and clear content
+    await postsCollection.updateOne({ id }, { $set: { deleted: true, content: "(deleted)" } });
+    // Send ActivityPub Delete
+    try {
+      await sendDeleteActivity(post as Post);
+    } catch (err) {
+      console.error("Failed to federate delete activity", err);
+    }
+    return c.redirect("/");
+  } catch (err) {
+    console.error("Error in delete post route", err);
+    return c.text("An error occurred while deleting the post.", 500);
+  }
 });
 
 export default app;
