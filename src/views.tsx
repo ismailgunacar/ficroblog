@@ -525,19 +525,24 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
   const replyFormId = `reply-form-${post.id}`;
 
   // Helper to render actors (for likes/reposts)
-  const renderActorList = (actors: Actor[] | undefined) =>
-    Array.isArray(actors) && actors.length > 0 ? (
+  const renderActorList = (actors: Actor[] | undefined) => {
+    if (!Array.isArray(actors) || actors.length === 0) return null;
+    // Only show valid actors with a handle (or other required property)
+    const validActors = actors.filter(
+      (actor): actor is Actor => Boolean(actor && typeof actor.handle === 'string' && actor.handle.trim() !== '')
+    );
+    if (validActors.length === 0) return null;
+    return (
       <span style={{ fontSize: '0.9em', color: '#888' }}>
-        {actors.filter(Boolean).map((actor, i) => (
-          actor ? (
-            <span key={actor.id}>
-              <ActorLink actor={actor} />{i < actors.length - 1 ? ', ' : ''}
-            </span>
-          ) : null
+        {validActors.slice(0, 8).map((actor, i) => (
+          <span key={actor.id}>
+            <ActorLink actor={actor} />{i < validActors.length - 1 ? ', ' : ''}
+          </span>
         ))}
-        {actors.length > 8 && <span> and {actors.length - 8} more</span>}
+        {validActors.length > 8 && <span> and {validActors.length - 8} more</span>}
       </span>
-    ) : null;
+    );
+  };
 
   return (
     <article style={{ marginBottom: '2rem', borderLeft: post.reply_to ? '2px solid #ccc' : undefined, paddingLeft: post.reply_to ? '1rem' : undefined }}>
@@ -581,7 +586,7 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
             >
               {post.isLikedByUser ? '❤️' : '🤍'} {post.likesCount || 0}
             </button>
-            {renderActorList(post.like_actors)}
+            {Array.isArray(post.like_actors) && post.like_actors.some(a => a && typeof a.handle === 'string' && a.handle.trim() !== '') && renderActorList(post.like_actors)}
             <button
               type="button"
               onClick={handleRepost}
@@ -609,7 +614,7 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
         {!isAuthenticated && (
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', color: 'var(--muted-color)' }}>
             <span>🤍 {post.likesCount || 0}</span>
-            {renderActorList(post.like_actors)}
+            {Array.isArray(post.like_actors) && post.like_actors.some(a => a && typeof a.handle === 'string' && a.handle.trim() !== '') && renderActorList(post.like_actors)}
             <span>🔄 {post.repostsCount || 0}</span>
             {Array.isArray(post.repost_actors) && post.repost_actors.length > 0 && renderActorList(post.repost_actors)}
           </div>
