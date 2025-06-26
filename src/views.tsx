@@ -556,12 +556,10 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
     if (post.user_id && post.handle) {
       const username = post.handle.split('@')[1] || post.handle.split('@')[0];
       const url = `/users/${username}/posts/${post.id}`;
-      console.log('[getPostPageUrl] post.id:', post.id, 'username:', username, 'url:', url, 'isLocal:', true);
       return url;
     }
     // Fallback to post.url or post.uri
     const fallbackUrl = post.url || post.uri;
-    console.log('[getPostPageUrl] post.id:', post.id, 'fallbackUrl:', fallbackUrl, 'isLocal:', false);
     return fallbackUrl;
   };
 
