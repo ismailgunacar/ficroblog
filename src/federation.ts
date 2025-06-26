@@ -794,6 +794,7 @@ export async function sendPostToFollowers(userId: number, post: Post, actor: Act
     const followsCollection = getFollowsCollection();
     const actorsCollection = getActorsCollection();
     const usersCollection = getUsersCollection();
+    const postsCollection = getPostsCollection();
     
     // Get the user to find username
     const user = await usersCollection.findOne({ id: userId });
@@ -812,7 +813,18 @@ export async function sendPostToFollowers(userId: number, post: Post, actor: Act
     
     // Create the context for sending activities  
     const context = federation.createContext(new URL(getCanonicalDomain()), userId);
-    
+
+    // Patch: Always use parent post's canonical uri for inReplyTo if available
+    let inReplyToUri: string | undefined = undefined;
+    if (post.reply_to) {
+      const parent = await postsCollection.findOne({ id: post.reply_to });
+      if (parent && parent.uri) {
+        inReplyToUri = parent.uri;
+      } else {
+        inReplyToUri = context.getObjectUri(Note, { identifier: user.username, id: post.reply_to.toString() }).toString();
+      }
+    }
+
     const note = new Note({
       id: context.getObjectUri(Note, { identifier: user.username, id: post.id.toString() }),
       attribution: context.getActorUri(user.username),
@@ -822,7 +834,7 @@ export async function sendPostToFollowers(userId: number, post: Post, actor: Act
       mediaType: "text/html",
       published: Temporal.Instant.from(post.created.toISOString()),
       url: context.getObjectUri(Note, { identifier: user.username, id: post.id.toString() }),
-      ...(post.reply_to ? { inReplyTo: context.getObjectUri(Note, { identifier: user.username, id: post.reply_to.toString() }) } : {})
+      ...(inReplyToUri ? { inReplyTo: inReplyToUri } : {})
     });
     
     const create = new Create({
