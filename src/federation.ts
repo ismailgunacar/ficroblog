@@ -981,7 +981,7 @@ export async function sendDeleteActivity(post: Post) {
   // Use Fedify's Delete class to construct the activity
   const activity = new Delete({
     id: new URL(`${actor.uri}/activity/delete/${post.id}`),
-    actor: actor.uri,
+    actor: new URL(actor.uri),
     object: new URL(objectUri),
     to: PUBLIC_COLLECTION,
     published: Temporal.Now.instant(),
