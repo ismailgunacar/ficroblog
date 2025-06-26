@@ -555,8 +555,36 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
     return post.url || post.uri;
   };
 
+  // Use a semantic <a> tag for the clickable post wrapper
   return (
-    <a href={getPostPageUrl(post)} style={{ textDecoration: 'none', color: 'inherit' }}>
+    <a
+      href={getPostPageUrl(post)}
+      style={{
+        display: 'block',
+        textDecoration: 'none',
+        color: 'inherit',
+        cursor: 'pointer',
+        outline: 'none',
+      }}
+      tabIndex={0}
+      onClick={e => {
+        // Only prevent navigation if clicking a button, form, or link inside
+        if (
+          e.target instanceof HTMLElement &&
+          ['BUTTON', 'A', 'FORM'].includes(e.target.tagName)
+        ) {
+          e.preventDefault();
+          // Do NOT navigate if clicking an inner button, link, or form
+          return;
+        }
+        // Otherwise, allow default navigation
+      }}
+      onKeyDown={e => {
+        if ((e.key === 'Enter' || e.key === ' ') && !(e.target instanceof HTMLButtonElement)) {
+          window.location.href = getPostPageUrl(post);
+        }
+      }}
+    >
       <article style={{ marginBottom: '2rem', borderLeft: post.reply_to ? '2px solid #ccc' : undefined, paddingLeft: post.reply_to ? '1rem' : undefined }}>
         <header>
           <ActorLink actor={post} />
@@ -569,11 +597,15 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
         )}
         <footer>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <a href={post.url ?? post.uri} onClick={e => e.preventDefault()}>
-              <time datetime={timestamp.iso}>
-                {timestamp.display}
-              </time>
-            </a>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <a href={post.url ?? post.uri} onClick={e => e.preventDefault()}>
+                <time datetime={timestamp.iso}>
+                  {timestamp.display}
+                </time>
+              </a>
+              {/* Permalink icon/link */}
+              <a href={getPostPageUrl(post)} title="Permalink to this post" style={{ fontSize: '1.1em', textDecoration: 'none' }}>🔗</a>
+            </span>
             {isAuthenticated && !post.deleted && (
               <form method="post" action={`/posts/${post.id}/delete`} style={{ display: 'inline' }} onSubmit={e => { if(!confirm('Delete this post?')) e.preventDefault(); }}>
                 <button type="submit" style={{ color: 'red', background: 'none', border: 'none', cursor: 'pointer' }}>🗑️ Delete</button>
