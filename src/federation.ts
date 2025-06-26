@@ -961,20 +961,53 @@ export async function sendProfileUpdate(userId: number, actor: Actor): Promise<v
 
 // Send ActivityPub Delete activity for a post
 export async function sendDeleteActivity(post: Post) {
+  await connectToDatabase();
   const actorsCollection = getActorsCollection();
+  const followsCollection = getFollowsCollection();
+  const usersCollection = getUsersCollection();
   const actor = await actorsCollection.findOne({ id: post.actor_id });
   if (!actor) return;
+  const user = await usersCollection.findOne({ id: actor.user_id });
+  if (!user) return;
+  const followers = await followsCollection.find({ following_id: actor.id }).toArray();
+  const context = federation.createContext(new URL(getCanonicalDomain()), actor.user_id);
   const objectUri = post.uri;
-  const activity = {
-    '@context': 'https://www.w3.org/ns/activitystreams',
-    id: `${actor.uri}/activity/delete/${post.id}`,
-    type: 'Delete',
+  // Use Fedify's Delete class to construct the activity
+  const activity = new Delete({
+    id: new URL(`${actor.uri}/activity/delete/${post.id}`),
     actor: actor.uri,
-    object: objectUri,
-    to: ['https://www.w3.org/ns/activitystreams#Public'],
-  };
-  // Use Fedify's federation API to send the activity
-  await federation.outbox.postActivity(actor, activity);
+    object: new URL(objectUri),
+    to: PUBLIC_COLLECTION,
+    published: Temporal.Now.instant(),
+  });
+  for (const follow of followers) {
+    const followerActor = await actorsCollection.findOne({ id: follow.follower_id });
+    if (followerActor && followerActor.inbox_url) {
+      try {
+        await context.sendActivity(
+          { identifier: user.username },
+          {
+            id: new URL(followerActor.uri),
+            inboxId: new URL(followerActor.inbox_url)
+          },
+          activity
+        );
+        logger.debug("Delete activity sent to follower", {
+          followerId: followerActor.id,
+          followerUri: followerActor.uri
+        });
+      } catch (error) {
+        logger.error("Failed to send delete activity to follower", {
+          followerId: followerActor.id,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+  }
+  logger.info("Delete activity sent to followers", {
+    postId: post.id,
+    followerCount: followers.length
+  });
 }
 
 export default federation;
