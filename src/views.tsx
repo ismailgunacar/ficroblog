@@ -526,12 +526,14 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
 
   // Helper to render actors (for likes/reposts)
   const renderActorList = (actors: Actor[] | undefined) =>
-    actors && actors.length > 0 ? (
+    Array.isArray(actors) && actors.length > 0 ? (
       <span style={{ fontSize: '0.9em', color: '#888' }}>
-        {actors.slice(0, 8).map((actor, i) => (
-          <span key={actor.id}>
-            <ActorLink actor={actor} />{i < actors.length - 1 ? ', ' : ''}
-          </span>
+        {actors.filter(Boolean).map((actor, i) => (
+          actor ? (
+            <span key={actor.id}>
+              <ActorLink actor={actor} />{i < actors.length - 1 ? ', ' : ''}
+            </span>
+          ) : null
         ))}
         {actors.length > 8 && <span> and {actors.length - 8} more</span>}
       </span>
