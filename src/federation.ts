@@ -697,24 +697,30 @@ federation
     const objectUri = del.objectId.href;
     // Only handle actor deletion for now
     if (objectUri.startsWith("http")) {
-      await connectToDatabase();
-      const actorsCollection = getActorsCollection();
-      const likesCollection = getLikesCollection();
-      const followsCollection = getFollowsCollection();
-      const repostsCollection = getRepostsCollection();
-      // Find the actor by URI
-      const actor = await actorsCollection.findOne({ uri: objectUri });
-      if (!actor) {
-        logger.info("Delete: No local actor found for URI", { objectUri });
-        return;
+      try {
+        await connectToDatabase();
+        const actorsCollection = getActorsCollection();
+        const likesCollection = getLikesCollection();
+        const followsCollection = getFollowsCollection();
+        const repostsCollection = getRepostsCollection();
+        // Find the actor by URI
+        const actor = await actorsCollection.findOne({ uri: objectUri });
+        if (!actor) {
+          logger.warn("Delete: No local actor found for URI (may be 401/410 or defederated)", { objectUri });
+          // Optionally, mark unreachable in DB for future reference
+          await actorsCollection.updateOne({ uri: objectUri }, { $set: { unreachable: true } }, { upsert: true });
+          return;
+        }
+        // Remove likes, follows, reposts by this actor
+        await likesCollection.deleteMany({ actor_id: actor.id });
+        await followsCollection.deleteMany({ $or: [ { follower_id: actor.id }, { following_id: actor.id } ] });
+        await repostsCollection.deleteMany({ actor_id: actor.id });
+        // Remove the actor itself
+        await actorsCollection.deleteOne({ id: actor.id });
+        logger.info("Delete: Removed remote actor and related data", { actorId: actor.id, uri: objectUri });
+      } catch (err) {
+        logger.error("Delete: Error handling remote actor deletion", { objectUri, error: err instanceof Error ? err.message : String(err) });
       }
-      // Remove likes, follows, reposts by this actor
-      await likesCollection.deleteMany({ actor_id: actor.id });
-      await followsCollection.deleteMany({ $or: [ { follower_id: actor.id }, { following_id: actor.id } ] });
-      await repostsCollection.deleteMany({ actor_id: actor.id });
-      // Remove the actor itself
-      await actorsCollection.deleteOne({ id: actor.id });
-      logger.info("Delete: Removed remote actor and related data", { actorId: actor.id, uri: objectUri });
     } else {
       logger.info("Delete: Ignoring non-actor object", { objectUri });
     }
