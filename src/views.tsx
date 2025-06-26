@@ -544,31 +544,42 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
     );
   };
 
+  // Helper to get the canonical post page URL
+  const getPostPageUrl = (post: Post & Actor) => {
+    // Prefer local user posts: /users/:username/posts/:id
+    if (post.user_id && post.handle) {
+      const username = post.handle.split('@')[1] || post.handle.split('@')[0];
+      return `/users/${username}/posts/${post.id}`;
+    }
+    // Fallback to post.url or post.uri
+    return post.url || post.uri;
+  };
+
   return (
-    <article style={{ marginBottom: '2rem', borderLeft: post.reply_to ? '2px solid #ccc' : undefined, paddingLeft: post.reply_to ? '1rem' : undefined }}>
-      <header>
-        <ActorLink actor={post} />
-      </header>
-      {/* Render post content: only linkify mentions for local posts */}
-      {post.user_id != null ? (
-        <div dangerouslySetInnerHTML={{ __html: makeLinksClickable(replaceMentionsWithLinks(post.content)) }} />
-      ) : (
-        <div dangerouslySetInnerHTML={{ __html: post.content }} />
-      )}
-      <footer>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <a href={post.url ?? post.uri}>
-            <time datetime={timestamp.iso}>
-              {timestamp.display}
-            </time>
-          </a>
-          {isAuthenticated && !post.deleted && (
-            <form method="post" action={`/posts/${post.id}/delete`} style={{ display: 'inline' }} onSubmit={e => { if(!confirm('Delete this post?')) e.preventDefault(); }}>
-              <button type="submit" style={{ color: 'red', background: 'none', border: 'none', cursor: 'pointer' }}>🗑️ Delete</button>
-            </form>
-          )}
-        </div>
-        {isAuthenticated && (
+    <a href={getPostPageUrl(post)} style={{ textDecoration: 'none', color: 'inherit' }}>
+      <article style={{ marginBottom: '2rem', borderLeft: post.reply_to ? '2px solid #ccc' : undefined, paddingLeft: post.reply_to ? '1rem' : undefined }}>
+        <header>
+          <ActorLink actor={post} />
+        </header>
+        {/* Render post content: only linkify mentions for local posts */}
+        {post.user_id != null ? (
+          <div dangerouslySetInnerHTML={{ __html: makeLinksClickable(replaceMentionsWithLinks(post.content)) }} />
+        ) : (
+          <div dangerouslySetInnerHTML={{ __html: post.content }} />
+        )}
+        <footer>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <a href={post.url ?? post.uri} onClick={e => e.preventDefault()}>
+              <time datetime={timestamp.iso}>
+                {timestamp.display}
+              </time>
+            </a>
+            {isAuthenticated && !post.deleted && (
+              <form method="post" action={`/posts/${post.id}/delete`} style={{ display: 'inline' }} onSubmit={e => { if(!confirm('Delete this post?')) e.preventDefault(); }}>
+                <button type="submit" style={{ color: 'red', background: 'none', border: 'none', cursor: 'pointer' }}>🗑️ Delete</button>
+              </form>
+            )}
+          </div>
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
             <button
               type="button"
@@ -610,33 +621,9 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
               data-reply-toggle={replyFormId}
             >💬 Reply</button>
           </div>
-        )}
-        {!isAuthenticated && (
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', color: 'var(--muted-color)' }}>
-            <span>🤍 {post.likesCount || 0}</span>
-            {Array.isArray(post.like_actors) && post.like_actors.some(a => a && typeof a.handle === 'string' && a.handle.trim() !== '') && renderActorList(post.like_actors)}
-            <span>🔄 {post.repostsCount || 0}</span>
-            {Array.isArray(post.repost_actors) && post.repost_actors.length > 0 && renderActorList(post.repost_actors)}
-          </div>
-        )}
-      </footer>
-      {/* Reply form (hidden by default) */}
-      {isAuthenticated && (
-        <form id={replyFormId} method="post" action="/" style={{ display: 'none', marginTop: '0.5rem' }}>
-          <input type="hidden" name="reply_to" value={post.id} />
-          <textarea name="content" required rows={2} placeholder="Write a reply..." maxLength={500} />
-          <input type="submit" value="Reply" />
-        </form>
-      )}
-      {/* Render replies recursively */}
-      {post.replies && post.replies.length > 0 && (
-        <div style={{ marginTop: '1rem', marginLeft: '1.5rem', borderLeft: '1px solid #eee', paddingLeft: '1rem' }}>
-          {post.replies.map((reply: any) => (
-            <PostView key={reply.id} post={reply} isAuthenticated={isAuthenticated} />
-          ))}
-        </div>
-      )}
-    </article>
+        </footer>
+      </article>
+    </a>
   );
 };
 
