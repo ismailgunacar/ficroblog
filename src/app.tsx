@@ -156,7 +156,9 @@ app.get("/", async (c) => {
         } : {} // Show all posts if not authenticated
       },
       { $sort: { created: -1 } },
-      { $limit: 1000 } // Load many more posts initially
+      { $limit: 1000 }, // Load many more posts initially
+      // Filter out deleted posts and replies to deleted posts
+      { $match: { deleted: { $ne: true } } },
     ])
     .toArray();
 
