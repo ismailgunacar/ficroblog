@@ -49,6 +49,8 @@ export interface Post {
   // Optional repost fields
   repost_of?: number; // If this is a repost, the original post ID
   is_repost?: boolean;
+  // Optional reply field
+  reply_to?: number; // If this is a reply, the parent post ID
 }
 
 export interface Like {

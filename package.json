@@ -17,11 +17,15 @@
     "mongodb": "^6.17.0",
     "stringify-entities": "^4.0.4",
     "tsx": "^4.20.3",
+    "undici-types": "^7.10.0",
     "x-forwarded-fetch": "^0.2.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
-    "@types/node": "^24.0.4"
+    "@types/mongodb": "^4.0.6",
+    "@types/node": "^20.19.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
   },
   "scripts": {
     "dev": "dotenvx run -- tsx watch ./src/index.ts",

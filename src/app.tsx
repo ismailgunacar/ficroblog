@@ -89,10 +89,50 @@ app.get("/", async (c) => {
       },
       {
         $lookup: {
+          from: "actors",
+          localField: "likes.actor_id",
+          foreignField: "id",
+          as: "like_actors"
+        }
+      },
+      {
+        $lookup: {
           from: "reposts",
           localField: "id",
           foreignField: "post_id",
           as: "reposts"
+        }
+      },
+      // Ensure reposts.actor_id is always a number for the join
+      {
+        $addFields: {
+          reposts: {
+            $map: {
+              input: "$reposts",
+              as: "r",
+              in: {
+                $mergeObjects: ["$$r", { actor_id: { $toInt: "$$r.actor_id" } }]
+              }
+            }
+          }
+        }
+      },
+      {
+        $lookup: {
+          from: "actors",
+          let: { repostActorIds: "$reposts.actor_id" },
+          pipeline: [
+            { $match: { $expr: { $in: ["$id", "$$repostActorIds"] } } }
+          ],
+          as: "repost_actors"
+        }
+      },
+      {
+        $lookup: {
+          from: "posts",
+          localField: "id",
+          foreignField: "reply_to",
+          as: "replies"
         }
       },
       {
@@ -137,9 +177,27 @@ app.get("/", async (c) => {
     return result;
   }) as (Post & Actor)[];
 
+  // Recursively nest replies for each post
+  function nestReplies(posts: any[]): any[] {
+    const postMap = new Map<number, any>();
+    posts.forEach(post => postMap.set(post.id, { ...post, replies: [] }));
+    const roots: any[] = [];
+    posts.forEach(post => {
+      if (post.reply_to && postMap.has(post.reply_to)) {
+        postMap.get(post.reply_to).replies.push(postMap.get(post.id));
+      } else {
+        roots.push(postMap.get(post.id));
+      }
+    });
+    return roots;
+  }
+
+  // Nest the replies in the posts
+  const nestedPosts = nestReplies(postsWithActors);
+
   return c.html(
     <Layout>
-      <Home user={userWithActor} posts={postsWithActors} isAuthenticated={isAuthenticated} />
+      <Home user={userWithActor} posts={nestedPosts} isAuthenticated={isAuthenticated} />
     </Layout>
   );
 });
@@ -203,10 +261,50 @@ app.get("/api/posts", async (c) => {
     },
     {
       $lookup: {
+        from: "actors",
+        localField: "likes.actor_id",
+        foreignField: "id",
+        as: "like_actors"
+      }
+    },
+    {
+      $lookup: {
         from: "reposts",
         localField: "id",
         foreignField: "post_id",
         as: "reposts"
+      }
+    },
+    // Ensure reposts.actor_id is always a number for the join
+    {
+      $addFields: {
+        reposts: {
+          $map: {
+            input: "$reposts",
+            as: "r",
+            in: {
+              $mergeObjects: ["$$r", { actor_id: { $toInt: "$$r.actor_id" } }]
+            }
+          }
+        }
+      }
+    },
+    {
+      $lookup: {
+        from: "actors",
+        let: { repostActorIds: "$reposts.actor_id" },
+        pipeline: [
+          { $match: { $expr: { $in: ["$id", "$$repostActorIds"] } } }
+        ],
+        as: "repost_actors"
+      }
+    },
+    {
+      $lookup: {
+        from: "posts",
+        localField: "id",
+        foreignField: "reply_to",
+        as: "replies"
       }
     },
     {
@@ -306,8 +404,10 @@ app.post("/", requireAuth(), async (c) => {
 
     const formData = await c.req.formData();
     const content = formData.get("content")?.toString();
+    const replyToRaw = formData.get("reply_to");
+    const reply_to = replyToRaw ? parseInt(replyToRaw.toString(), 10) : undefined;
     
-    logger.info(`Received post content from ${user.username}: "${content}"`);
+    logger.info(`Received post content from ${user.username}: "${content}"${reply_to ? ` (reply to ${reply_to})` : ''}`);
     
     if (!content || content.trim() === "") {
       logger.warn("Empty content submitted");
@@ -336,7 +436,8 @@ app.post("/", requireAuth(), async (c) => {
       actor_id: actor.id,
       content: stringifyEntities(content.trim(), { escapeOnly: true }),
       url: postUri,
-      created: new Date()
+      created: new Date(),
+      ...(reply_to ? { reply_to } : {})
     };
 
     logger.info("Inserting post into database...", { newPost });
@@ -523,7 +624,57 @@ app.get("/users/:username", async (c) => {
           as: "actor"
         }
       },
-      { $match: { actor_id: actor.id } },
+      {
+        $lookup: {
+          from: "likes",
+          localField: "id",
+          foreignField: "post_id",
+          as: "likes"
+        }
+      },
+      {
+        $lookup: {
+          from: "actors",
+          localField: "likes.actor_id",
+          foreignField: "id",
+          as: "like_actors"
+        }
+      },
+      {
+        $lookup: {
+          from: "reposts",
+          localField: "id",
+          foreignField: "post_id",
+          as: "reposts"
+        }
+      },
+      // Ensure reposts.actor_id is always a number for the join
+      {
+        $addFields: {
+          reposts: {
+            $map: {
+              input: "$reposts",
+              as: "r",
+              in: {
+                $mergeObjects: ["$$r", { actor_id: { $toInt: "$$r.actor_id" } }]
+              }
+            }
+          }
+        }
+      },
+      {
+        $lookup: {
+          from: "actors",
+          let: { repostActorIds: "$reposts.actor_id" },
+          pipeline: [
+            { $match: { $expr: { $in: ["$id", "$$repostActorIds"] } } }
+          ],
+          as: "repost_actors"
+        }
+      },
+      {
+        $match: { actor_id: actor.id }
+      },
       { $sort: { created: -1 } }
     ])
     .toArray();
@@ -532,6 +683,24 @@ app.get("/users/:username", async (c) => {
     ...post,
     ...post.actor[0]
   }));
+
+  // Recursively nest replies for each post (profile page)
+  function nestReplies(posts: any[]): any[] {
+    const postMap = new Map<number, any>();
+    posts.forEach(post => postMap.set(post.id, { ...post, replies: [] }));
+    const roots: any[] = [];
+    posts.forEach(post => {
+      if (post.reply_to && postMap.has(post.reply_to)) {
+        postMap.get(post.reply_to).replies.push(postMap.get(post.id));
+      } else {
+        roots.push(postMap.get(post.id));
+      }
+    });
+    return roots;
+  }
+
+  // Nest the replies in the posts
+  const nestedPosts = nestReplies(postsWithActors);
 
   return c.html(
     <Layout>
@@ -543,7 +712,7 @@ app.get("/users/:username", async (c) => {
         following={followingCount}
         followers={followersCount}
       />
-      <PostList posts={postsWithActors} isAuthenticated={isAuthenticated} />
+      <PostList posts={nestedPosts} isAuthenticated={isAuthenticated} />
     </Layout>
   );
 });
@@ -814,33 +983,31 @@ app.get("/login", redirectIfAuthenticated(), async (c) => {
 // Login form submission
 app.post("/login", async (c) => {
   logger.info("Login POST handler started");
-  
   try {
     await connectToDatabase();
-    
     const form = await c.req.formData();
-    const username = form.get("username");
     const password = form.get("password");
-
-    logger.info("Login attempt", { username });
-
-    if (typeof username !== "string" || typeof password !== "string") {
-      logger.warn("Invalid form data", { username: typeof username, password: typeof password });
+    logger.info("Login attempt (single user mode)");
+    if (typeof password !== "string") {
+      logger.warn("Invalid form data: password missing");
       return c.redirect("/login");
     }
-
-    const user = await authenticateUser(username, password);
+    // Always use the only user in the database
+    const usersCollection = getUsersCollection();
+    const user = await usersCollection.findOne({}) as User | null;
     if (!user) {
-      logger.warn("Authentication failed", { username });
+      logger.warn("No user found in database");
       return c.redirect("/login");
     }
-
-    logger.info("Authentication successful", { username, userId: user.id });
-    
+    const isValid = await bcrypt.compare(password, user.password);
+    if (!isValid) {
+      logger.warn("Authentication failed for single user");
+      return c.redirect("/login");
+    }
+    logger.info("Authentication successful", { userId: user.id });
     createSession(c, user);
     logger.info("Session created, redirecting to home");
     return c.redirect("/");
-    
   } catch (error) {
     logger.error("Login handler error", { error: error instanceof Error ? error.message : String(error) });
     return c.redirect("/login");

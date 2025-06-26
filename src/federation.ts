@@ -231,6 +231,7 @@ federation.setObjectDispatcher(
       mediaType: "text/html",
       published: Temporal.Instant.from(post.created.toISOString()),
       url: ctx.getObjectUri(Note, values),
+      ...(post.reply_to ? { inReplyTo: ctx.getObjectUri(Note, { identifier: values.identifier, id: post.reply_to.toString() }) } : {})
     });
   }
 );
@@ -342,6 +343,7 @@ federation
         mediaType: "text/html",
         published: Temporal.Instant.from(post.created.toISOString()),
         url: ctx.getObjectUri(Note, { identifier, id: post.id.toString() }),
+        ...(post.reply_to ? { inReplyTo: ctx.getObjectUri(Note, { identifier, id: post.reply_to.toString() }) } : {})
       });
 
       return new Create({
@@ -528,8 +530,8 @@ federation
 
       try {
         await repostsCollection.deleteOne({
-          actor_id: actorRecord.id,
-          post_id: post.id
+          actor_id: Number(actorRecord.id),
+          post_id: Number(post.id)
         });
         logger.info("Unannounce activity processed", { postId: post.id, actorId: actorRecord.id });
       } catch (error) {
@@ -588,6 +590,13 @@ federation
     const postsCollection = getPostsCollection();
 
     try {
+      // Check for inReplyTo property (may be on object directly or in object._fields)
+      let replyToId: number | undefined = undefined;
+      const inReplyTo = (object as any).inReplyTo || (object as any)._fields?.inReplyTo;
+      if (inReplyTo) {
+        const match = /\/posts\/(\d+)/.exec(inReplyTo.toString());
+        if (match) replyToId = parseInt(match[1], 10);
+      }
       const postId = await getNextSequence("posts");
       await postsCollection.insertOne({
         id: postId,
@@ -595,7 +604,8 @@ federation
         actor_id: actorRecord.id,
         content,
         url: object.url?.href || null,
-        created: new Date()
+        created: new Date(),
+        ...(replyToId ? { reply_to: replyToId } : {})
       });
     } catch (error) {
       logger.error("Failed to create post from activity", { error });

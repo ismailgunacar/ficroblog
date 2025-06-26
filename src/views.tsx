@@ -108,6 +108,19 @@ export const Layout: FC = (props) => (
           });
         `
       }} />
+      {/* Add script to enable reply form toggling for SSR */}
+      <script dangerouslySetInnerHTML={{
+        __html: `
+          document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('button[data-reply-toggle]').forEach(function(btn) {
+              btn.addEventListener('click', function() {
+                var form = document.getElementById(btn.getAttribute('data-reply-toggle'));
+                if (form) form.style.display = form.style.display === 'none' ? 'block' : 'none';
+              });
+            });
+          });
+        `
+      }} />
     </body>
   </html>
 );
@@ -163,15 +176,6 @@ export const LoginForm: FC = () => (
     <h1>Login to your microblog</h1>
     <form method="post" action="/login">
       <fieldset>
-        <label>
-          Username{" "}
-          <input
-            type="text"
-            name="username"
-            required
-            maxlength={50}
-          />
-        </label>
         <label>
           Password{" "}
           <input
@@ -451,6 +455,9 @@ export interface PostViewProps {
     repostsCount?: number;
     isLikedByUser?: boolean;
     isRepostedByUser?: boolean;
+    replies?: any[];
+    like_actors?: Actor[];
+    repost_actors?: Actor[];
   };
   isAuthenticated?: boolean;
 }
@@ -513,8 +520,24 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
     }
   };
 
+  // Reply form state (simple, non-reactive for SSR)
+  const replyFormId = `reply-form-${post.id}`;
+
+  // Helper to render actors (for likes/reposts)
+  const renderActorList = (actors: Actor[] | undefined) =>
+    actors && actors.length > 0 ? (
+      <span style={{ fontSize: '0.9em', color: '#888' }}>
+        {actors.slice(0, 8).map((actor, i) => (
+          <span key={actor.id}>
+            <ActorLink actor={actor} />{i < actors.length - 1 ? ', ' : ''}
+          </span>
+        ))}
+        {actors.length > 8 && <span> and {actors.length - 8} more</span>}
+      </span>
+    ) : null;
+
   return (
-    <article>
+    <article style={{ marginBottom: '2rem', borderLeft: post.reply_to ? '2px solid #ccc' : undefined, paddingLeft: post.reply_to ? '1rem' : undefined }}>
       <header>
         <ActorLink actor={post} />
       </header>
@@ -527,7 +550,6 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
               {timestamp.display}
             </time>
           </a>
-          
           {isAuthenticated && (
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
               <button
@@ -546,7 +568,7 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
               >
                 {post.isLikedByUser ? '❤️' : '🤍'} {post.likesCount || 0}
               </button>
-              
+              {renderActorList(post.like_actors)}
               <button
                 type="button"
                 onClick={handleRepost}
@@ -563,16 +585,39 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
               >
                 {post.isRepostedByUser ? '🔁' : '🔄'} {post.repostsCount || 0}
               </button>
+              {renderActorList(post.repost_actors)}
+              {/* Reply button toggles reply form */}
+              <button
+                type="button"
+                data-reply-toggle={replyFormId}
+              >💬 Reply</button>
             </div>
           )}
-          
           {!isAuthenticated && (
             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', color: 'var(--muted-color)' }}>
               <span>🤍 {post.likesCount || 0}</span>
+              {renderActorList(post.like_actors)}
               <span>🔄 {post.repostsCount || 0}</span>
+              {Array.isArray(post.repost_actors) && post.repost_actors.length > 0 && renderActorList(post.repost_actors)}
             </div>
           )}
         </div>
+        {/* Reply form (hidden by default) */}
+        {isAuthenticated && (
+          <form id={replyFormId} method="post" action="/" style={{ display: 'none', marginTop: '0.5rem' }}>
+            <input type="hidden" name="reply_to" value={post.id} />
+            <textarea name="content" required rows={2} placeholder="Write a reply..." maxLength={500} />
+            <input type="submit" value="Reply" />
+          </form>
+        )}
+        {/* Render replies recursively */}
+        {post.replies && post.replies.length > 0 && (
+          <div style={{ marginTop: '1rem', marginLeft: '1.5rem', borderLeft: '1px solid #eee', paddingLeft: '1rem' }}>
+            {post.replies.map((reply: any) => (
+              <PostView key={reply.id} post={reply} isAuthenticated={isAuthenticated} />
+            ))}
+          </div>
+        )}
       </footer>
     </article>
   );
