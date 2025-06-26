@@ -849,7 +849,6 @@ export async function sendPostToFollowers(userId: number, post: Post, actor: Act
     // Send to all followers
     for (const follow of followers) {
       const followerActor = await actorsCollection.findOne({ id: follow.follower_id });
-      
       if (followerActor && followerActor.inbox_url) {
         try {
           await context.sendActivity(
@@ -860,7 +859,6 @@ export async function sendPostToFollowers(userId: number, post: Post, actor: Act
             },
             create
           );
-          
           logger.debug("Post sent to follower", { 
             postId: post.id,
             followerId: followerActor.id,
@@ -872,6 +870,37 @@ export async function sendPostToFollowers(userId: number, post: Post, actor: Act
             followerId: followerActor.id,
             error: error instanceof Error ? error.message : String(error)
           });
+        }
+      }
+    }
+
+    // --- PATCH: If this is a reply, and the parent post's actor is remote, send to their inbox too ---
+    if (post.reply_to) {
+      const parent = await postsCollection.findOne({ id: post.reply_to });
+      if (parent && parent.actor_id !== actor.id) {
+        const parentActor = await actorsCollection.findOne({ id: parent.actor_id });
+        if (parentActor && parentActor.inbox_url && parentActor.uri !== actor.uri) {
+          try {
+            await context.sendActivity(
+              { identifier: user.username },
+              {
+                id: new URL(parentActor.uri),
+                inboxId: new URL(parentActor.inbox_url)
+              },
+              create
+            );
+            logger.info("Reply federated to remote parent actor's inbox", {
+              postId: post.id,
+              parentActorId: parentActor.id,
+              parentActorUri: parentActor.uri
+            });
+          } catch (error) {
+            logger.error("Failed to federate reply to remote parent actor", {
+              postId: post.id,
+              parentActorId: parentActor.id,
+              error: error instanceof Error ? error.message : String(error)
+            });
+          }
         }
       }
     }
