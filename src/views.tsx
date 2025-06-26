@@ -441,9 +441,15 @@ export interface PostListProps {
 
 export const PostList: FC<PostListProps> = ({ posts, isAuthenticated = false }) => (
   <>
-    {posts.map((post) => (
+    {posts.map((post: any) => (
       <div key={post.id} id={`post-${post.id}`} data-post-id={post.id}>
         <PostView post={post} isAuthenticated={isAuthenticated} />
+        {/* Render replies if present */}
+        {Array.isArray(post.replies) && post.replies.length > 0 && (
+          <div style={{ marginLeft: '2rem', borderLeft: '1px solid #eee', paddingLeft: '1rem' }}>
+            <PostList posts={post.replies} isAuthenticated={isAuthenticated} />
+          </div>
+        )}
       </div>
     ))}
   </>
@@ -555,6 +561,15 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
     return post.url || post.uri;
   };
 
+  // Determine if we are already on the canonical post page
+  let isOnPostPage = false;
+  if (typeof window !== 'undefined') {
+    try {
+      const canonicalUrl = getPostPageUrl(post);
+      isOnPostPage = window.location.pathname === canonicalUrl;
+    } catch {}
+  }
+
   // Use a semantic <a> tag for the clickable post wrapper
   return (
     <a
@@ -607,7 +622,11 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
                 </time>
               </a>
               {/* Permalink icon/link */}
-              <a href={getPostPageUrl(post)} title="Permalink to this post" style={{ fontSize: '1.1em', textDecoration: 'none' }}>🔗</a>
+              {typeof window !== 'undefined' && isOnPostPage ? (
+                <span title="Permalink to this post" style={{ fontSize: '1.1em', textDecoration: 'none', opacity: 0.5, cursor: 'default' }}>🔗</span>
+              ) : (
+                <a href={getPostPageUrl(post)} title="Permalink to this post" style={{ fontSize: '1.1em', textDecoration: 'none' }}>🔗</a>
+              )}
             </span>
             {isAuthenticated && !post.deleted && (
               <form method="post" action={`/posts/${post.id}/delete`} style={{ display: 'inline' }} onSubmit={e => { if(!confirm('Delete this post?')) e.preventDefault(); }}>
@@ -658,6 +677,22 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
           </div>
         </footer>
       </article>
+      {/* Reply form, hidden by default, toggled by reply button */}
+      <form
+        id={replyFormId}
+        method="post"
+        action="/"
+        style={{ display: 'none', marginTop: '1rem', marginLeft: '2rem', borderLeft: '2px solid #eee', paddingLeft: '1rem' }}
+      >
+        <input type="hidden" name="reply_to" value={post.id} />
+        <fieldset>
+          <label>
+            Reply:
+            <textarea name="content" required rows={2} maxLength={500} placeholder="Write your reply..." />
+          </label>
+        </fieldset>
+        <input type="submit" value="Reply" />
+      </form>
     </a>
   );
 };
@@ -675,6 +710,13 @@ export const PostPage: FC<PostPageProps> = (props) => (
       followers={props.followers}
     />
     <PostView post={props.post} isAuthenticated={props.isAuthenticated} />
+    {/* Show replies to this post, if any */}
+    {Array.isArray(props.post.replies) && props.post.replies.length > 0 && (
+      <section style={{ marginLeft: '2rem', borderLeft: '2px solid #eee', paddingLeft: '1rem', marginTop: '2rem' }}>
+        <h3>Replies</h3>
+        <PostList posts={props.post.replies} isAuthenticated={props.isAuthenticated} />
+      </section>
+    )}
   </>
 );
 
