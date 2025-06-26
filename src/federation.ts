@@ -904,6 +904,53 @@ export async function sendPostToFollowers(userId: number, post: Post, actor: Act
         }
       }
     }
+
+    // Always send Create activity to all followers' inboxes
+    const note = new Note({
+      id: context.getObjectUri(Note, { identifier: user.username, id: post.id.toString() }),
+      attribution: context.getActorUri(user.username),
+      to: PUBLIC_COLLECTION,
+      cc: context.getFollowersUri(user.username),
+      content: post.content,
+      mediaType: "text/html",
+      published: Temporal.Instant.from(post.created.toISOString()),
+      url: context.getObjectUri(Note, { identifier: user.username, id: post.id.toString() }),
+      ...(post.reply_to ? { inReplyTo: inReplyToUri || undefined } : {})
+    });
+    const createActivity = new Create({
+      id: new URL(context.getObjectUri(Note, { identifier: user.username, id: post.id.toString() }).href.replace('/posts/', '/activities/create/')),
+      actor: context.getActorUri(user.username),
+      object: note,
+      to: PUBLIC_COLLECTION,
+      cc: context.getFollowersUri(user.username),
+      published: Temporal.Instant.from(post.created.toISOString()),
+    });
+    for (const follow of followers) {
+      const followerActor = await actorsCollection.findOne({ id: follow.follower_id });
+      if (followerActor && followerActor.inbox_url) {
+        try {
+          await context.sendActivity(
+            { identifier: user.username },
+            {
+              id: new URL(followerActor.uri),
+              inboxId: new URL(followerActor.inbox_url)
+            },
+            createActivity
+          );
+          logger.info("Create activity sent to follower", {
+            followerId: followerActor.id,
+            followerUri: followerActor.uri,
+            postId: post.id
+          });
+        } catch (error) {
+          logger.error("Failed to send create activity to follower", {
+            followerId: followerActor.id,
+            postId: post.id,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      }
+    }
     
     logger.info("Post sent to followers", { 
       userId, 
