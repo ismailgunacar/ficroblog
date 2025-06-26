@@ -877,8 +877,21 @@ export async function sendPostToFollowers(userId: number, post: Post, actor: Act
     // --- PATCH: If this is a reply, and the parent post's actor is remote, send to their inbox too ---
     if (post.reply_to) {
       const parent = await postsCollection.findOne({ id: post.reply_to });
+      logger.info("[Federation] Reply logic triggered", {
+        postId: post.id,
+        replyTo: post.reply_to,
+        parentFound: !!parent,
+        parentActorId: parent?.actor_id,
+        currentActorId: actor.id
+      });
       if (parent && parent.actor_id !== actor.id) {
         const parentActor = await actorsCollection.findOne({ id: parent.actor_id });
+        logger.info("[Federation] Parent actor lookup", {
+          parentActorId: parentActor?.id,
+          parentActorInbox: parentActor?.inbox_url,
+          parentActorUri: parentActor?.uri,
+          currentActorUri: actor.uri
+        });
         if (parentActor && parentActor.inbox_url && parentActor.uri !== actor.uri) {
           try {
             await context.sendActivity(
