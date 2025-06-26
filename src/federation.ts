@@ -825,6 +825,9 @@ export async function sendPostToFollowers(userId: number, post: Post, actor: Act
         parentActorId: parent?.actor_id,
         currentActorId: actor.id
       });
+      if (parent && parent.uri) {
+        inReplyToUri = parent.uri;
+      }
       if (!parent) {
         logger.warn("[Federation] Parent post not found in DB for reply", {
           postId: post.id,
