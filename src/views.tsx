@@ -2,7 +2,7 @@ import type { FC } from "hono/jsx";
 import type { Actor, Post, User } from "./schema.ts";
 import { makeLinksClickable } from "./utils.ts";
 
-export const Layout: FC = (props) => (
+export const Layout: FC<{ user?: User & Actor; isAuthenticated?: boolean; children?: any }> = (props) => (
   <html lang="en">
     <head>
       <meta charset="utf-8" />
@@ -92,6 +92,17 @@ export const Layout: FC = (props) => (
       </style>
     </head>
     <body>
+      <header style="padding: 1rem 0; text-align: center;">
+        {props.user ? (
+          <a href="/" style="font-size: 1.5rem; font-weight: bold; text-decoration: none; color: inherit;">
+            {props.user.name}
+          </a>
+        ) : (
+          <a href="/" style="font-size: 1.5rem; font-weight: bold; text-decoration: none; color: inherit;">
+            Marco3
+          </a>
+        )}
+      </header>
       <main class="container">{props.children}</main>
       
       {/* Prevent CSS size changes after external stylesheet loads */}

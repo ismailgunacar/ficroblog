@@ -203,7 +203,7 @@ app.get("/", async (c) => {
   const nestedPosts = nestReplies(postsWithActors);
 
   return c.html(
-    <Layout>
+    <Layout user={userWithActor} isAuthenticated={isAuthenticated}>
       <Home user={userWithActor} posts={nestedPosts} isAuthenticated={isAuthenticated} />
     </Layout>
   );
