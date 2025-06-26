@@ -587,7 +587,10 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
     >
       <article style={{ marginBottom: '2rem', borderLeft: post.reply_to ? '2px solid #ccc' : undefined, paddingLeft: post.reply_to ? '1rem' : undefined }}>
         <header>
-          <ActorLink actor={post} />
+          {/* Fix: Only the post wrapper links to the post page. The name/handle links to the user page. */}
+          <span onClick={e => e.stopPropagation()}>
+            <ActorLink actor={post} />
+          </span>
         </header>
         {/* Render post content: only linkify mentions for local posts */}
         {post.user_id != null ? (
@@ -750,8 +753,6 @@ export const ActorLink: FC<ActorLinkProps> = ({ actor }) => {
     return <span>Unknown user</span>;
   }
   
-  // For local actors (user_id is set OR handle contains the current domain), link to local user page
-  // For remote actors, link to their external profile
   let href: string;
   let isLocal = false;
   
@@ -767,8 +768,17 @@ export const ActorLink: FC<ActorLinkProps> = ({ actor }) => {
   }
   
   if (isLocal) {
-    // Local user - extract username from handle and link to local page
-    const username = actor.handle.split('@')[1] || actor.handle.split('@')[0];
+    // Local user - extract username as the segment between first and second '@'
+    let username = '';
+    if (actor.handle) {
+      // Remove leading @ if present
+      const handle = actor.handle.startsWith('@') ? actor.handle.slice(1) : actor.handle;
+      // Username is the part before the second @, e.g. ismailgunacar in ismailgunacar@gunac.ar
+      const parts = handle.split('@');
+      username = parts.length > 1 ? parts[0] : handle;
+    } else {
+      username = 'user';
+    }
     href = `/users/${username}`;
   } else {
     // Remote user - link to their external profile

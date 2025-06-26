@@ -591,56 +591,41 @@ app.get("/users/:username", async (c) => {
   const currentUser = getCurrentUser(c);
   const isAuthenticated = !!currentUser;
 
-  // If authenticated, fetch the user and actor for the session
-  let currentActorId: number | undefined = undefined;
-  if (currentUser && currentUser.username) {
-    const currentUserDb = await usersCollection.findOne({ username: currentUser.username });
-    if (currentUserDb) {
-      const currentActor = await actorsCollection.findOne({ user_id: currentUserDb.id });
-      if (currentActor) currentActorId = currentActor.id;
-    }
-  }
+  // Get follower/following counts
+  const followingCount = await followsCollection.countDocuments({ follower_id: actor.id });
+  const followersCount = await followsCollection.countDocuments({ following_id: actor.id });
 
-  const likesCollection = getLikesCollection();
-  const repostsCollection = getRepostsCollection();
-
-  // Get likes and reposts for this post
-  const likes = await likesCollection.find({ post_id: post.id }).toArray();
-  const reposts = await repostsCollection.find({ post_id: post.id }).toArray();
-
-  // Get like and repost actors
-  const likeActorIds = likes.map(l => l.actor_id);
-  const repostActorIds = reposts.map(r => r.actor_id);
-  const like_actors = likeActorIds.length > 0 ? await actorsCollection.find({ id: { $in: likeActorIds } }).toArray() as Actor[] : [];
-  const repost_actors = repostActorIds.length > 0 ? await actorsCollection.find({ id: { $in: repostActorIds } }).toArray() as Actor[] : [];
-
-  // Compose the post object with all required fields, then remove _id
-  const postWithActor = {
+  // Get this user's posts (not replies, not deleted)
+  const posts = await postsCollection.find({ actor_id: actor.id, deleted: { $ne: true } }).sort({ created: -1 }).toArray();
+  // Attach actor fields to each post for UI compatibility
+  const postsWithActor = posts.map(post => ({
     ...post,
-    ...actor,
-    ...user,
-    likesCount: likes.length,
-    repostsCount: reposts.length,
-    like_actors,
-    repost_actors,
-    isLikedByUser: currentActorId ? likes.some(l => l.actor_id === currentActorId) : false,
-    isRepostedByUser: currentActorId ? reposts.some(r => r.actor_id === currentActorId) : false,
-  };
-  // Remove only the _id field if present
-  const { _id, ...postWithActorClean } = postWithActor;
+    uri: actor.uri,
+    handle: actor.handle,
+    name: actor.name,
+    user_id: actor.user_id,
+    inbox_url: actor.inbox_url,
+    shared_inbox_url: actor.shared_inbox_url,
+    url: actor.url || post.url,
+  }));
+
+  // Remove _id from userWithActor for type compatibility
+  const { _id, ...userWithActorClean } = userWithActor;
+
+  // Remove _id from posts for type compatibility
+  const postsWithActorClean = postsWithActor.map(({ _id, ...rest }) => rest);
 
   return c.html(
-    <Layout>
-      <PostPage
+    <Layout user={userWithActorClean as User & Actor} isAuthenticated={isAuthenticated}>
+      <Profile
         name={actor.name ?? user.username}
         username={user.username}
         handle={actor.handle}
         bio={actor.summary}
         following={followingCount}
         followers={followersCount}
-        post={postWithActorClean}
-        isAuthenticated={isAuthenticated}
       />
+      <PostList posts={postsWithActorClean as (Post & Actor)[]} isAuthenticated={isAuthenticated} />
     </Layout>
   );
 });
