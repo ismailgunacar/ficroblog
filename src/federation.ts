@@ -799,6 +799,7 @@ export async function sendPostToFollowers(userId: number, post: Post, actor: Act
       mediaType: "text/html",
       published: Temporal.Instant.from(post.created.toISOString()),
       url: context.getObjectUri(Note, { identifier: user.username, id: post.id.toString() }),
+      ...(post.reply_to ? { inReplyTo: context.getObjectUri(Note, { identifier: user.username, id: post.reply_to.toString() }) } : {})
     });
     
     const create = new Create({
