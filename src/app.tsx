@@ -185,7 +185,12 @@ app.get("/", async (c) => {
     posts.forEach(post => postMap.set(post.id, { ...post, replies: [] }));
     const roots: any[] = [];
     posts.forEach(post => {
-      if (post.reply_to && postMap.has(post.reply_to)) {
+      // Prevent self-reply and only nest if parent exists and is not self
+      if (
+        post.reply_to &&
+        post.reply_to !== post.id &&
+        postMap.has(post.reply_to)
+      ) {
         postMap.get(post.reply_to).replies.push(postMap.get(post.id));
       } else {
         roots.push(postMap.get(post.id));
@@ -692,7 +697,12 @@ app.get("/users/:username", async (c) => {
     posts.forEach(post => postMap.set(post.id, { ...post, replies: [] }));
     const roots: any[] = [];
     posts.forEach(post => {
-      if (post.reply_to && postMap.has(post.reply_to)) {
+      // Prevent self-reply and only nest if parent exists and is not self
+      if (
+        post.reply_to &&
+        post.reply_to !== post.id &&
+        postMap.has(post.reply_to)
+      ) {
         postMap.get(post.reply_to).replies.push(postMap.get(post.id));
       } else {
         roots.push(postMap.get(post.id));
