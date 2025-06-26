@@ -620,78 +620,77 @@ app.get("/users/:username", async (c) => {
   const followersCount = await followsCollection.countDocuments({ following_id: actor.id });
   const followingCount = await followsCollection.countDocuments({ follower_id: actor.id });
 
-  // Get user's posts
-  const posts = await postsCollection
-    .aggregate([
-      {
-        $lookup: {
-          from: "actors",
-          localField: "actor_id",
-          foreignField: "id",
-          as: "actor"
-        }
-      },
-      {
-        $lookup: {
-          from: "likes",
-          localField: "id",
-          foreignField: "post_id",
-          as: "likes"
-        }
-      },
-      {
-        $lookup: {
-          from: "actors",
-          localField: "likes.actor_id",
-          foreignField: "id",
-          as: "like_actors"
-        }
-      },
-      {
-        $lookup: {
-          from: "reposts",
-          localField: "id",
-          foreignField: "post_id",
-          as: "reposts"
-        }
-      },
-      // Ensure reposts.actor_id is always a number for the join
-      {
-        $addFields: {
-          reposts: {
-            $map: {
-              input: "$reposts",
-              as: "r",
-              in: {
-                $mergeObjects: ["$$r", { actor_id: { $toInt: "$$r.actor_id" } }]
-              }
-            }
-          }
-        }
-      },
-      {
-        $lookup: {
-          from: "actors",
-          let: { repostActorIds: "$reposts.actor_id" },
-          pipeline: [
-            { $match: { $expr: { $in: ["$id", "$$repostActorIds"] } } }
-          ],
-          as: "repost_actors"
-        }
-      },
-      {
-        $match: { actor_id: actor.id }
-      },
-      { $sort: { created: -1 } }
-    ])
-    .toArray();
+  // --- Robust recursive fetch for all posts and replies ---
+  // 1. Fetch all post IDs authored by the user
+  let allPostIds = await postsCollection.distinct("id", { actor_id: actor.id, deleted: { $ne: true } });
+  let fetchedIds = new Set(allPostIds);
+  let toFetch = [...allPostIds];
+  let allPosts: any[] = [];
 
-  const postsWithActors = posts.map(post => ({
+  // 2. Iteratively fetch replies to any post in the set, until no new replies are found
+  while (toFetch.length > 0) {
+    const replies = await postsCollection.find({ reply_to: { $in: toFetch }, deleted: { $ne: true } }).toArray();
+    const newReplies = replies.filter(r => !fetchedIds.has(r.id));
+    if (newReplies.length === 0) break;
+    newReplies.forEach(r => fetchedIds.add(r.id));
+    toFetch = newReplies.map(r => r.id);
+    allPosts.push(...newReplies);
+  }
+
+  // 3. Fetch all original posts by the user
+  const userPosts = await postsCollection.find({ actor_id: actor.id, deleted: { $ne: true } }).toArray();
+  allPosts.push(...userPosts);
+
+  // 4. Remove duplicates
+  const postMapById = new Map<number, any>();
+  allPosts.forEach(post => postMapById.set(post.id, post));
+  const allUniquePosts = Array.from(postMapById.values());
+
+  // 5. Enrich posts with actors, likes, reposts, like_actors, repost_actors
+  const postIds = allUniquePosts.map(p => p.id);
+  const [actors, likes, reposts] = await Promise.all([
+    actorsCollection.find({}).toArray(),
+    getLikesCollection().find({ post_id: { $in: postIds } }).toArray(),
+    getRepostsCollection().find({ post_id: { $in: postIds } }).toArray(),
+  ]);
+  const actorMap = new Map(actors.map(a => [a.id, a]));
+  const likesByPost = new Map<number, any[]>();
+  likes.forEach(like => {
+    if (!likesByPost.has(like.post_id)) likesByPost.set(like.post_id, []);
+    likesByPost.get(like.post_id)!.push(like);
+  });
+  const repostsByPost = new Map<number, any[]>();
+  reposts.forEach(repost => {
+    if (!repostsByPost.has(repost.post_id)) repostsByPost.set(repost.post_id, []);
+    repostsByPost.get(repost.post_id)!.push(repost);
+  });
+  // Like/repost actors
+  const likeActorIds = Array.from(new Set(likes.map(l => l.actor_id)));
+  const repostActorIds = Array.from(new Set(reposts.map(r => r.actor_id)));
+  const [likeActors, repostActors] = await Promise.all([
+    actorsCollection.find({ id: { $in: likeActorIds } }).toArray(),
+    actorsCollection.find({ id: { $in: repostActorIds } }).toArray(),
+  ]);
+  const likeActorMap = new Map(likeActors.map(a => [a.id, a]));
+  const repostActorMap = new Map(repostActors.map(a => [a.id, a]));
+
+  // 6. Attach actor, likes, reposts, like_actors, repost_actors to each post
+  const postsWithActors = allUniquePosts.map(post => ({
     ...post,
-    ...post.actor[0]
+    actor: actorMap.get(post.actor_id) ? [actorMap.get(post.actor_id)] : [],
+    // Attach actor fields directly for ActorLink compatibility
+    handle: actorMap.get(post.actor_id)?.handle ?? '',
+    name: actorMap.get(post.actor_id)?.name ?? '',
+    user_id: actorMap.get(post.actor_id)?.user_id ?? null,
+    url: actorMap.get(post.actor_id)?.url ?? '',
+    uri: actorMap.get(post.actor_id)?.uri ?? '',
+    likes: likesByPost.get(post.id) || [],
+    like_actors: (likesByPost.get(post.id) || []).map(l => likeActorMap.get(l.actor_id)).filter(Boolean),
+    reposts: repostsByPost.get(post.id) || [],
+    repost_actors: (repostsByPost.get(post.id) || []).map(r => repostActorMap.get(r.actor_id)).filter(Boolean),
   }));
 
-  // Recursively nest replies for each post (profile page)
+  // 7. Recursively nest replies for each post (profile page)
   function nestReplies(posts: any[]): any[] {
     const postMap = new Map<number, any>();
     posts.forEach(post => postMap.set(post.id, { ...post, replies: [] }));
@@ -708,6 +707,14 @@ app.get("/users/:username", async (c) => {
         roots.push(postMap.get(post.id));
       }
     });
+    // Sort root posts (descending, newest first)
+    roots.sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime());
+    // Sort replies (ascending, oldest first)
+    for (const post of postMap.values()) {
+      if (post.replies && post.replies.length > 1) {
+        post.replies.sort((a: any, b: any) => new Date(a.created).getTime() - new Date(b.created).getTime());
+      }
+    }
     return roots;
   }
 
