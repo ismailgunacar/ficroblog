@@ -688,6 +688,7 @@ app.get("/users/:username", async (c) => {
     like_actors: (likesByPost.get(post.id) || []).map(l => likeActorMap.get(l.actor_id)).filter(Boolean),
     reposts: repostsByPost.get(post.id) || [],
     repost_actors: (repostsByPost.get(post.id) || []).map(r => repostActorMap.get(r.actor_id)).filter(Boolean),
+    parent_post: post.reply_to ? allUniquePosts.find(p => p.id === post.reply_to) : undefined,
   }));
 
   // 7. Recursively nest replies for each post (profile page)

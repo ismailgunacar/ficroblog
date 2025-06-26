@@ -222,6 +222,16 @@ federation.setObjectDispatcher(
     });
     if (!post) return null;
 
+    // Before constructing the Note, resolve inReplyTo URI if this is a reply
+    let inReplyToUri: string | undefined = undefined;
+    if (post.reply_to) {
+      const parent = await getPostsCollection().findOne({ id: post.reply_to });
+      if (parent && parent.uri) {
+        inReplyToUri = parent.uri;
+      } else {
+        inReplyToUri = ctx.getObjectUri(Note, { identifier: values.identifier, id: post.reply_to.toString() }).toString();
+      }
+    }
     return new Note({
       id: ctx.getObjectUri(Note, values),
       attribution: ctx.getActorUri(values.identifier),
@@ -231,7 +241,7 @@ federation.setObjectDispatcher(
       mediaType: "text/html",
       published: Temporal.Instant.from(post.created.toISOString()),
       url: ctx.getObjectUri(Note, values),
-      ...(post.reply_to ? { inReplyTo: ctx.getObjectUri(Note, { identifier: values.identifier, id: post.reply_to.toString() }) } : {})
+      ...(inReplyToUri ? { inReplyTo: inReplyToUri } : {})
     });
   }
 );
@@ -594,8 +604,15 @@ federation
       let replyToId: number | undefined = undefined;
       const inReplyTo = (object as any).inReplyTo || (object as any)._fields?.inReplyTo;
       if (inReplyTo) {
-        const match = /\/posts\/(\d+)/.exec(inReplyTo.toString());
-        if (match) replyToId = parseInt(match[1], 10);
+        // Try to match by full URI first
+        const parentPost = await postsCollection.findOne({ uri: inReplyTo.toString() });
+        if (parentPost) {
+          replyToId = parentPost.id;
+        } else {
+          // Fallback: try to match /posts/{id} in the URI
+          const match = /\/posts\/(\d+)/.exec(inReplyTo.toString());
+          if (match) replyToId = parseInt(match[1], 10);
+        }
       }
       const postId = await getNextSequence("posts");
       await postsCollection.insertOne({

@@ -450,7 +450,7 @@ export const PostList: FC<PostListProps> = ({ posts, isAuthenticated = false }) 
 );
 
 export interface PostViewProps {
-  post: Post & Actor & {
+  post: (Post & Actor & {
     likesCount?: number;
     repostsCount?: number;
     isLikedByUser?: boolean;
@@ -458,7 +458,8 @@ export interface PostViewProps {
     replies?: any[];
     like_actors?: Actor[];
     repost_actors?: Actor[];
-  };
+    parent_post?: Post & Actor;
+  });
   isAuthenticated?: boolean;
 }
 
@@ -541,8 +542,12 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
       <header>
         <ActorLink actor={post} />
       </header>
-      {/* biome-ignore lint/security/noDangerouslySetInnerHtml: */}
-      <div dangerouslySetInnerHTML={{ __html: makeLinksClickable(post.content) }} />
+      {/* Render post content: only linkify mentions for local posts */}
+      {post.user_id != null ? (
+        <div dangerouslySetInnerHTML={{ __html: makeLinksClickable(replaceMentionsWithLinks(post.content)) }} />
+      ) : (
+        <div dangerouslySetInnerHTML={{ __html: post.content }} />
+      )}
       <footer>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <a href={post.url ?? post.uri}>
@@ -790,3 +795,18 @@ export const ProfileEditForm: FC<{ name: string; bio?: string }> = ({ name, bio 
     </form>
   </>
 );
+
+// Add this helper function near the top of the file (after imports):
+function replaceMentionsWithLinks(content: string): string {
+  // Replace @username (local) and @user@domain (remote)
+  return content.replace(/(^|\\s)@(\\w+)(@(\\w+\\.\\w+))?/g, (match, space, username, _full, domain) => {
+    if (domain) {
+      // Remote mention: try to link to fediverse profile if possible
+      const url = `https://${domain}/@${username}`;
+      return `${space}<a href="${url}" class="u-url mention" rel="nofollow">@${username}@${domain}</a>`;
+    } else {
+      // Local mention
+      return `${space}<a href="/users/${username}" class="u-url mention">@${username}</a>`;
+    }
+  });
+}
