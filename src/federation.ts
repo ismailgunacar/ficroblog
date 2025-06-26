@@ -3,6 +3,7 @@ import {
   Accept,
   Announce,
   Create,
+  Delete,
   Endpoints,
   Follow,
   Like,
@@ -626,7 +627,8 @@ federation
         return;
       }
       // Update actorRecord reference
-      actorRecord = persistedActor;
+      actorRecord = await actorsCollection.findOne({ uri: like.actorId.href });
+      if (!actorRecord) return; // Defensive: still not found
     }
 
     // Find the post being liked
@@ -661,6 +663,35 @@ federation
       logger.error("Failed to process like activity", { error });
     }
   })
+  // Handle ActivityPub Delete activity
+  .on(Delete, async (ctx, del) => {
+    logger.info("Received Delete activity", { id: del.id?.href, actor: del.actorId?.href, object: del.objectId?.href });
+    if (!del.objectId) return;
+    const objectUri = del.objectId.href;
+    // Only handle actor deletion for now
+    if (objectUri.startsWith("http")) {
+      await connectToDatabase();
+      const actorsCollection = getActorsCollection();
+      const likesCollection = getLikesCollection();
+      const followsCollection = getFollowsCollection();
+      const repostsCollection = getRepostsCollection();
+      // Find the actor by URI
+      const actor = await actorsCollection.findOne({ uri: objectUri });
+      if (!actor) {
+        logger.info("Delete: No local actor found for URI", { objectUri });
+        return;
+      }
+      // Remove likes, follows, reposts by this actor
+      await likesCollection.deleteMany({ actor_id: actor.id });
+      await followsCollection.deleteMany({ $or: [ { follower_id: actor.id }, { following_id: actor.id } ] });
+      await repostsCollection.deleteMany({ actor_id: actor.id });
+      // Remove the actor itself
+      await actorsCollection.deleteOne({ id: actor.id });
+      logger.info("Delete: Removed remote actor and related data", { actorId: actor.id, uri: objectUri });
+    } else {
+      logger.info("Delete: Ignoring non-actor object", { objectUri });
+    }
+  })
   .on(Announce, async (ctx, announce) => {
     if (announce.objectId == null || announce.actorId == null) {
       logger.debug("Announce activity missing required fields", { announce });
@@ -686,8 +717,8 @@ federation
         logger.debug("Could not persist actor for announce", { actor });
         return;
       }
-      // Update actorRecord reference
-      actorRecord = persistedActor;
+      actorRecord = await actorsCollection.findOne({ uri: announce.actorId.href });
+      if (!actorRecord) return; // Defensive: still not found
     }
 
     // Find the post being announced
