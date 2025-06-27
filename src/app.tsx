@@ -977,24 +977,86 @@ app.get("/users/:username/posts/:id", async (c) => {
   );
 });
 
-// ActivityPub JSON endpoint for posts
-app.get("/users/:username/posts/:id.json", async (c) => {
-  c.req.raw.headers.set("Accept", "application/activity+json");
-  return await serveActivityPubPost(c);
-});
-app.get("/users/:username/posts/:id", async (c) => {
-  if (c.req.header("accept")?.includes("application/activity+json")) {
-    return await serveActivityPubPost(c);
-  }
-
+// --- Shared handler for profile page ---
+async function handleProfilePage(c: any, username: string) {
   await connectToDatabase();
   const usersCollection = getUsersCollection();
   const actorsCollection = getActorsCollection();
   const postsCollection = getPostsCollection();
   const followsCollection = getFollowsCollection();
+  const likesCollection = getLikesCollection();
+  const repostsCollection = getRepostsCollection();
 
-  const username = c.req.param("username");
-  const postId = parseInt(c.req.param("id"));
+  const user = await usersCollection.findOne({ username });
+  if (!user) return c.notFound();
+  const actor = await actorsCollection.findOne({ user_id: user.id });
+  if (!actor) return c.notFound();
+  const userWithActor = { ...user, ...actor };
+  const currentUser = getCurrentUser(c);
+  const isAuthenticated = !!currentUser;
+  const followingCount = await followsCollection.countDocuments({ follower_id: actor.id });
+  const followersCount = await followsCollection.countDocuments({ following_id: actor.id });
+  const posts = await postsCollection.aggregate([
+    { $match: { actor_id: actor.id, deleted: { $ne: true } } },
+    { $sort: { created: -1 } },
+    { $lookup: { from: "likes", localField: "id", foreignField: "post_id", as: "likes" } },
+    { $lookup: { from: "actors", localField: "likes.actor_id", foreignField: "id", as: "like_actors" } },
+    { $lookup: { from: "reposts", localField: "id", foreignField: "post_id", as: "reposts" } },
+    { $addFields: { reposts: { $map: { input: "$reposts", as: "r", in: { $mergeObjects: ["$$r", { actor_id: { $toInt: "$$r.actor_id" } }] } } } },
+    { $lookup: { from: "actors", let: { repostActorIds: "$reposts.actor_id" }, pipeline: [ { $match: { $expr: { $in: ["$id", "$$repostActorIds"] } } } ], as: "repost_actors" } },
+    { $lookup: { from: "posts", localField: "id", foreignField: "reply_to", as: "replies" } },
+    { $addFields: { likesCount: { $size: "$likes" }, repostsCount: { $size: "$reposts" }, isLikedByUser: isAuthenticated ? { $in: [actor.id, "$likes.actor_id"] } : false, isRepostedByUser: isAuthenticated ? { $in: [actor.id, "$reposts.actor_id"] } : false } }
+  ]).toArray();
+  const postsWithActor = posts.map(post => ({ ...post, uri: actor.uri, handle: actor.handle, name: actor.name, user_id: actor.user_id, inbox_url: actor.inbox_url, shared_inbox_url: actor.shared_inbox_url, url: actor.url || post.url }));
+  const { _id, ...userWithActorClean } = userWithActor;
+  const postsWithActorClean = postsWithActor.map((rest: any) => rest);
+  const rootPosts = (postsWithActorClean as any[]).filter(post => !post.reply_to);
+  const rootPostIds = rootPosts.map(post => post.id);
+  const allReplies = await postsCollection.aggregate([
+    { $match: { reply_to: { $in: rootPostIds }, deleted: { $ne: true } } },
+    { $sort: { created: 1 } },
+    { $lookup: { from: "actors", localField: "actor_id", foreignField: "id", as: "actor" } },
+    { $lookup: { from: "likes", localField: "id", foreignField: "post_id", as: "likes" } },
+    { $lookup: { from: "actors", localField: "likes.actor_id", foreignField: "id", as: "like_actors" } },
+    { $lookup: { from: "reposts", localField: "id", foreignField: "post_id", as: "reposts" } },
+    { $addFields: { reposts: { $map: { input: "$reposts", as: "r", in: { $mergeObjects: ["$$r", { actor_id: { $toInt: "$$r.actor_id" } }] } } } },
+    { $lookup: { from: "actors", let: { repostActorIds: "$reposts.actor_id" }, pipeline: [ { $match: { $expr: { $in: ["$id", "$$repostActorIds"] } } } ], as: "repost_actors" } },
+    { $addFields: { likesCount: { $size: "$likes" }, repostsCount: { $size: "$reposts" } }
+    }
+  ]).toArray();
+  const repliesWithActor = allReplies.map(reply => {
+    const replyActor = reply.actor && reply.actor[0] ? reply.actor[0] : {};
+    const { _id, actor: _actorArr, ...rest } = reply;
+    return { ...rest, uri: replyActor.uri || rest.uri, handle: replyActor.handle || rest.handle, name: replyActor.name || rest.name, user_id: replyActor.user_id || rest.user_id, inbox_url: replyActor.inbox_url || rest.inbox_url, shared_inbox_url: replyActor.shared_inbox_url || rest.shared_inbox_url, url: replyActor.url || rest.url, id: rest.id, actor_id: rest.actor_id, content: rest.content, created: rest.created, reply_to: rest.reply_to, likesCount: rest.likesCount, repostsCount: rest.repostsCount, like_actors: rest.like_actors, repost_actors: rest.repost_actors, isLikedByUser: rest.isLikedByUser, isRepostedByUser: rest.isRepostedByUser, replies: [] };
+  });
+  const replyMap = new Map<number, any>();
+  for (const reply of repliesWithActor) replyMap.set(reply.id, reply);
+  for (const reply of repliesWithActor) {
+    if (reply.reply_to && replyMap.has(reply.reply_to)) replyMap.get(reply.reply_to).replies.push(reply);
+  }
+  for (const post of rootPosts) post.replies = repliesWithActor.filter(r => r.reply_to === post.id);
+  return c.html(
+    <Layout user={userWithActorClean as User & Actor} isAuthenticated={isAuthenticated}>
+      <Profile
+        name={actor.name ?? user.username}
+        username={user.username}
+        handle={actor.handle}
+        bio={actor.summary}
+        following={followingCount}
+        followers={followersCount}
+      />
+      <PostList posts={rootPosts as (Post & Actor)[]} isAuthenticated={isAuthenticated} />
+    </Layout>
+  );
+}
+
+// --- Shared handler for post page ---
+async function handlePostPage(c: any, username: string, postId: number) {
+  await connectToDatabase();
+  const usersCollection = getUsersCollection();
+  const actorsCollection = getActorsCollection();
+  const postsCollection = getPostsCollection();
+  const followsCollection = getFollowsCollection();
 
   const user = await usersCollection.findOne({ username });
   if (!user) return c.notFound();
@@ -1196,28 +1258,24 @@ app.get("/users/:username/posts/:id", async (c) => {
       />
     </Layout>
   );
-});
+}
 
-// Helper to serve ActivityPub JSON for a post
-async function serveActivityPubPost(c) {
+// --- Helper to serve ActivityPub JSON for a post ---
+async function serveActivityPubPost(c: any) {
   await connectToDatabase();
   const usersCollection = getUsersCollection();
   const actorsCollection = getActorsCollection();
   const postsCollection = getPostsCollection();
-
   const username = c.req.param("username");
   const postId = parseInt(c.req.param("id"));
-
   const user = await usersCollection.findOne({ username });
   if (!user) return c.notFound();
   const actor = await actorsCollection.findOne({ user_id: user.id });
   if (!actor) return c.notFound();
   const post = await postsCollection.findOne({ id: postId, actor_id: actor.id });
   if (!post) return c.notFound();
-
-  // Compose ActivityPub Note object
   const domain = process.env.DOMAIN || "gunac.ar";
-  const canonicalUrl = `https://${domain}/users/${username}/posts/${postId}`;
+  const canonicalUrl = `https://${domain}/${username}/posts/${postId}`;
   const note = {
     '@context': [
       'https://www.w3.org/ns/activitystreams',
@@ -1229,278 +1287,33 @@ async function serveActivityPubPost(c) {
     content: post.content,
     published: post.created instanceof Date ? post.created.toISOString() : new Date(post.created).toISOString(),
     url: canonicalUrl,
-    ...(post.reply_to ? { inReplyTo: post.reply_to && typeof post.reply_to === 'number' ? `https://${domain}/users/${username}/posts/${post.reply_to}` : post.reply_to } : {}),
+    ...(post.reply_to ? { inReplyTo: post.reply_to && typeof post.reply_to === 'number' ? `https://${domain}/${username}/posts/${post.reply_to}` : post.reply_to } : {}),
     to: ['https://www.w3.org/ns/activitystreams#Public'],
   };
   return c.json(note);
 }
 
-// Follow another actor
-app.post("/users/:username/following", requireAuth(), async (c) => {
-  await connectToDatabase();
-  const usersCollection = getUsersCollection();
-  const actorsCollection = getActorsCollection();
-
-  const username = c.req.param("username");
-  const form = await c.req.formData();
-  const handle = form.get("actor");
-
-  if (typeof handle !== "string") {
-    return c.text("Invalid actor handle or URL", 400);
-  }
-
-  const user = await usersCollection.findOne({ username });
-  if (!user) return c.text("User not found", 404);
-
-  const ctx = createCanonicalContext(c.req.raw, undefined);
-  
-  try {
-    const actor = await ctx.lookupObject(handle.trim());
-    if (!isActor(actor)) {
-      return c.text("Invalid actor handle or URL", 400);
-    }
-
-    await ctx.sendActivity(
-      { identifier: username },
-      actor,
-      new Follow({
-        actor: ctx.getActorUri(username),
-        object: actor.id,
-        to: actor.id,
-      })
-    );
-
-    return c.text("Successfully sent a follow request");
-  } catch (error) {
-    logger.error("Failed to send follow request", { error });
-    return c.text("Failed to send follow request", 500);
-  }
+// --- Register both /:username and /user/:username routes ---
+app.get("/:username", async (c) => {
+  return handleProfilePage(c, c.req.param("username"));
 });
-
-// Followers list
-app.get("/users/:username/followers", async (c) => {
-  await connectToDatabase();
-  const usersCollection = getUsersCollection();
-  const actorsCollection = getActorsCollection();
-  const followsCollection = getFollowsCollection();
-
-  const username = c.req.param("username");
-  
-  const user = await usersCollection.findOne({ username });
-  if (!user) return c.notFound();
-
-  const actor = await actorsCollection.findOne({ user_id: user.id });
-  if (!actor) return c.notFound();
-
-  const followers = await followsCollection
-    .aggregate([
-      { $match: { following_id: actor.id } },
-      {
-        $lookup: {
-          from: "actors",
-          localField: "follower_id",
-          foreignField: "id",
-          as: "follower"
-        }
-      },
-      // Filter out records where no actor was found
-      { $match: { "follower.0": { $exists: true } } },
-      { $sort: { created: -1 } }
-    ])
-    .toArray();
-
-  const followerActors = followers
-    .map(f => f.follower[0])
-    .filter(actor => actor != null); // Extra safety filter
-
-  return c.html(
-    <Layout>
-      <FollowerList followers={followerActors} />
-    </Layout>
-  );
+app.get("/user/:username", async (c) => {
+  return handleProfilePage(c, c.req.param("username"));
 });
-
-// Following list
-app.get("/users/:username/following", async (c) => {
-  await connectToDatabase();
-  const usersCollection = getUsersCollection();
-  const actorsCollection = getActorsCollection();
-  const followsCollection = getFollowsCollection();
-
-  const username = c.req.param("username");
-  
-  const user = await usersCollection.findOne({ username });
-  if (!user) return c.notFound();
-
-  const actor = await actorsCollection.findOne({ user_id: user.id });
-  if (!actor) return c.notFound();
-
-  const following = await followsCollection
-    .aggregate([
-      { $match: { follower_id: actor.id } },
-      {
-        $lookup: {
-          from: "actors",
-          localField: "following_id",
-          foreignField: "id",
-          as: "following"
-        }
-      },
-      // Filter out records where no actor was found
-      { $match: { "following.0": { $exists: true } } },
-      { $sort: { created: -1 } }
-    ])
-    .toArray();
-
-  const followingActors = following
-    .map(f => f.following[0])
-    .filter(actor => actor != null); // Extra safety filter
-
-  return c.html(
-    <Layout>
-      <FollowingList following={followingActors} />
-    </Layout>
-  );
+app.get("/:username/posts/:id", async (c) => {
+  return handlePostPage(c, c.req.param("username"), parseInt(c.req.param("id")));
 });
-
-// Login page
-app.get("/login", redirectIfAuthenticated(), async (c) => {
-  return c.html(
-    <Layout>
-      <LoginForm />
-    </Layout>
-  );
+app.get("/user/:username/posts/:id", async (c) => {
+  return handlePostPage(c, c.req.param("username"), parseInt(c.req.param("id")));
 });
-
-// Login form submission
-app.post("/login", async (c) => {
-  logger.info("Login POST handler started");
-  try {
-    await connectToDatabase();
-    const form = await c.req.formData();
-    const password = form.get("password");
-    logger.info("Login attempt (single user mode)");
-    if (typeof password !== "string") {
-      logger.warn("Invalid form data: password missing");
-      return c.redirect("/login");
-    }
-    // Always use the only user in the database
-    const usersCollection = getUsersCollection();
-    const user = await usersCollection.findOne({}) as User | null;
-    if (!user) {
-      logger.warn("No user found in database");
-      return c.redirect("/login");
-    }
-    const isValid = await bcrypt.compare(password, user.password);
-    if (!isValid) {
-      logger.warn("Authentication failed for single user");
-      return c.redirect("/login");
-    }
-    logger.info("Authentication successful", { userId: user.id });
-    createSession(c, user);
-    logger.info("Session created, redirecting to home");
-    return c.redirect("/");
-  } catch (error) {
-    logger.error("Login handler error", { error: error instanceof Error ? error.message : String(error) });
-    return c.redirect("/login");
-  }
+// ActivityPub JSON endpoints
+app.get("/:username/posts/:id.json", async (c) => {
+  c.req.raw.headers.set("Accept", "application/activity+json");
+  return await serveActivityPubPost(c);
 });
-
-// Logout
-app.get("/logout", async (c) => {
-  destroySession(c);
-  return c.redirect("/");
-});
-
-// Profile edit form
-app.get("/profile/edit", requireAuth(), async (c) => {
-  try {
-    await connectToDatabase();
-    const actorsCollection = getActorsCollection();
-    
-    const currentUser = getCurrentUser(c);
-    if (!currentUser) {
-      return c.redirect("/login");
-    }
-    
-    const actor = await actorsCollection.findOne({ user_id: currentUser.userId });
-    if (!actor) {
-      logger.error("Actor not found for user", { userId: currentUser.userId });
-      return c.text("Actor not found", 404);
-    }
-    
-    const html = (
-      <Layout title="Edit Profile" user={currentUser}>
-        <ProfileEditForm 
-          name={actor.name || actor.handle} 
-          bio={actor.summary} 
-        />
-      </Layout>
-    );
-    
-    return c.html(html);
-  } catch (error) {
-    logger.error("Profile edit form error", { error: error instanceof Error ? error.message : String(error) });
-    return c.text("Internal server error", 500);
-  }
-});
-
-// Handle profile edit form submission
-app.post("/profile/edit", requireAuth(), async (c) => {
-  try {
-    await connectToDatabase();
-    const actorsCollection = getActorsCollection();
-    
-    const currentUser = getCurrentUser(c);
-    if (!currentUser) {
-      return c.redirect("/login");
-    }
-    
-    const body = await c.req.parseBody();
-    const name = typeof body.name === "string" ? body.name.trim() : "";
-    const bio = typeof body.bio === "string" ? body.bio.trim() : "";
-    
-    if (!name) {
-      return c.text("Name is required", 400);
-    }
-    
-    // Update the actor with the new name and bio
-    const result = await actorsCollection.updateOne(
-      { user_id: currentUser.userId },
-      { 
-        $set: { 
-          name: name,
-          summary: bio || "" 
-        } 
-      }
-    );
-    
-    if (result.matchedCount === 0) {
-      logger.error("Actor not found for user during update", { userId: currentUser.userId });
-      return c.text("Actor not found", 404);
-    }
-    
-    // Get the updated actor data to send the ActivityPub update
-    const updatedActor = await actorsCollection.findOne({ user_id: currentUser.userId });
-    if (updatedActor) {
-      // Send profile update to followers via ActivityPub
-      sendProfileUpdate(currentUser.userId, updatedActor as Actor).catch(error => {
-        logger.error("Failed to send ActivityPub profile update", { 
-          userId: currentUser.userId, 
-          error: error instanceof Error ? error.message : String(error) 
-        });
-      });
-    }
-    
-    logger.info("Profile updated", { userId: currentUser.userId, name, bio });
-    
-    // Redirect back to the user's profile page
-    return c.redirect(`/users/${currentUser.username}`);
-    
-  } catch (error) {
-    logger.error("Profile edit submission error", { error: error instanceof Error ? error.message : String(error) });
-    return c.text("Internal server error", 500);
-  }
+app.get("/user/:username/posts/:id.json", async (c) => {
+  c.req.raw.headers.set("Accept", "application/activity+json");
+  return await serveActivityPubPost(c);
 });
 
 // Like a post
@@ -1768,7 +1581,7 @@ app.get("/.well-known/webfinger", async (c) => {
   logger.info("WebFinger request", { resource, expectedAcct1, expectedAcct2 });
   if (!resource || (resource.toLowerCase() !== expectedAcct1 && resource.toLowerCase() !== expectedAcct2)) {
     logger.warn("WebFinger: Resource not found", { resource, expectedAcct1, expectedAcct2 });
-    return c.json({ error: "Resource not found" }, 404);
+    return c.json({ error: "Resource not found" },  404);
   }
   // Compose WebFinger response
   const response = {
