@@ -1743,4 +1743,44 @@ app.post("/posts/:id/delete", requireAuth(), async (c) => {
   }
 });
 
+// WebFinger endpoint for ActivityPub discovery
+app.get("/.well-known/webfinger", async (c) => {
+  await connectToDatabase();
+  const usersCollection = getUsersCollection();
+  const actorsCollection = getActorsCollection();
+  const anyUser = await usersCollection.findOne({});
+  if (!anyUser) {
+    return c.json({ error: "No user found" }, 404);
+  }
+  const user = anyUser as User;
+  const actor = await actorsCollection.findOne({ user_id: user.id });
+  if (!actor) {
+    return c.json({ error: "No actor found" }, 404);
+  }
+  // Parse resource param (e.g., acct:username@domain)
+  const resource = c.req.query("resource");
+  const expectedAcct = `acct:${user.username}@${c.req.header("host")}`;
+  if (!resource || resource !== expectedAcct) {
+    return c.json({ error: "Resource not found" }, 404);
+  }
+  // Compose WebFinger response
+  const response = {
+    subject: expectedAcct,
+    aliases: [actor.uri, actor.url].filter(Boolean),
+    links: [
+      {
+        rel: "self",
+        type: "application/activity+json",
+        href: actor.uri,
+      },
+      {
+        rel: "http://webfinger.net/rel/profile-page",
+        type: "text/html",
+        href: actor.url || actor.uri,
+      },
+    ],
+  };
+  return c.json(response);
+});
+
 export default app;
