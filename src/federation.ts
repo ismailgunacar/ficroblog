@@ -43,8 +43,10 @@ if (!process.env.DOMAIN) {
 // Helper function to get canonical domain for federation
 export function getCanonicalDomain(): string {
   const domain = process.env.DOMAIN || "gunac.ar";
-  // Always use HTTPS for production federation, even in development
-  return domain.includes("localhost") ? `http://${domain}` : `https://${domain}`;
+  // Always use HTTPS for federation, even in development (unless localhost)
+  if (domain.includes("localhost")) return `http://${domain}`;
+  // Remove any protocol prefix and force https
+  return `https://${domain.replace(/^https?:\/\//, "")}`;
 }
 
 // Helper function to create federation context with canonical domain

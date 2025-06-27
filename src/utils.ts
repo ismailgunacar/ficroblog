@@ -104,27 +104,27 @@ export async function createIndexes(): Promise<void> {
   }
 }
 
-// Helper to make URLs clickable in text content
+// Helper to make URLs clickable in text content, excluding trailing punctuation
+// This matches http(s)://, www., and excludes trailing .,!?:;)]}'" from the link
 export function makeLinksClickable(text: string): string {
   if (!text) return text;
-  
-  // Regular expression to match URLs
-  // This matches http://, https://, www., and simple domain.tld patterns
-  const urlRegex = /(https?:\/\/[^\s<>"{}|\\^`[\]]+|www\.[^\s<>"{}|\\^`[\]]+)/gi;
-  
-  return text.replace(urlRegex, (url) => {
-    // Skip if already part of an HTML tag
-    if (url.includes('<') || url.includes('>')) {
-      return url;
+  // Match URLs (http(s) or www.), but do not include trailing punctuation
+  const urlRegex = /((https?:\/\/|www\.)[^\s<>'"\]\)\}\,\!\?:;]*)/gi;
+  return text.replace(urlRegex, (match) => {
+    let url = match;
+    let trailing = '';
+    // Remove all trailing punctuation (.,!?:;)]}'")
+    while (url.length > 0 && /[.,!?:;\]\)\}'"]$/.test(url)) {
+      trailing = url.slice(-1) + trailing;
+      url = url.slice(0, -1);
     }
-    
-    // Ensure the URL has a protocol
+    // Only remove a period if it is at the end and not part of the domain
+    if (url.endsWith('.') && !/\.[a-z]{2,}$/i.test(url)) {
+      trailing = '.' + trailing;
+      url = url.slice(0, -1);
+    }
     let href = url;
-    if (!url.startsWith('http')) {
-      href = `https://${url}`;
-    }
-    
-    // Create a clickable link with security attributes
-    return `<a href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+    if (!url.startsWith('http')) href = 'https://' + url;
+    return `<a href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>` + trailing;
   });
 }

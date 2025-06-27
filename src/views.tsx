@@ -301,23 +301,10 @@ export const Home: FC<HomeProps> = ({ user, posts, isAuthenticated = false }) =>
               return { iso: '', display: 'Invalid date' };
             }
           };
-          
-          const makeLinksClickable = (text) => {
-            if (!text) return text;
-            const urlRegex = /(https?:\\/\\/[^\\s<>"{}|\\\\^\\x60[\\]]+|www\\.[^\\s<>"{}|\\\\^\\x60[\\]]+)/gi;
-            return text.replace(urlRegex, (url) => {
-              if (url.includes('<') || url.includes('>')) return url;
-              let href = url;
-              if (!url.startsWith('http')) href = 'https://' + url;
-              return '<a href="' + href + '" target="_blank" rel="noopener noreferrer">' + url + '</a>';
-            });
-          };
-          
           const timestamp = formatTimestamp(post.created);
           const isLocal = post.user_id || (post.handle && (post.handle.includes('@gunac.ar') || post.handle.includes('@localhost:8000')));
           const username = post.handle.split('@')[1] || post.handle.split('@')[0];
           const href = isLocal ? '/users/' + username : (post.url || post.uri);
-          
           return \`
             <article>
               <header>
@@ -341,18 +328,13 @@ export const Home: FC<HomeProps> = ({ user, posts, isAuthenticated = false }) =>
             </article>
           \`;
         }
-        
         // Scroll event listener
         function handleScroll() {
           if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 1000) {
             loadMorePosts();
           }
         }
-        
-        // Add scroll listener
         window.addEventListener('scroll', handleScroll);
-        
-        // Initial cursor setup
         document.addEventListener('DOMContentLoaded', function() {
           const posts = document.querySelectorAll('[data-post-id]');
           if (posts.length > 0) {
