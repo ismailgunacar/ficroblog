@@ -140,20 +140,23 @@ federation
     if (!actor) return null;
 
     const keys = await ctx.getActorKeyPairs(identifier);
+    // Always use canonical HTTPS domain for all URLs
+    const domain = getCanonicalDomain();
+    const actorUrl = `${domain}/users/${identifier}`;
     return new Person({
-      id: ctx.getActorUri(identifier),
+      id: new URL(actorUrl),
       preferredUsername: identifier,
       name: actor.name,
       summary: actor.summary, // Include bio/description for fediverse compatibility
-      inbox: ctx.getInboxUri(identifier),
-      outbox: ctx.getOutboxUri(identifier),
+      inbox: new URL(`${actorUrl}/inbox`),
+      outbox: new URL(`${actorUrl}/outbox`),
       endpoints: new Endpoints({
-        sharedInbox: ctx.getInboxUri(),
+        sharedInbox: new URL(`${domain}/inbox`),
       }),
-      url: ctx.getActorUri(identifier),
+      url: new URL(actorUrl),
       publicKey: keys[0]?.cryptographicKey,
       assertionMethods: keys.map((k) => k.multikey),
-      followers: ctx.getFollowersUri(identifier),
+      followers: new URL(`${actorUrl}/followers`),
     });
   })
   .setKeyPairsDispatcher(async (ctx, identifier) => {
