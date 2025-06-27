@@ -1,6 +1,7 @@
 import type { FC } from "hono/jsx";
 import type { Actor, Post, User } from "./schema.ts";
 import { makeLinksClickable } from "./utils.ts";
+import { DateTime } from "luxon";
 
 export const Layout: FC<{ user?: User & Actor; isAuthenticated?: boolean; children?: any }> = (props) => (
   <html lang="en">
@@ -876,6 +877,13 @@ export const ProfileEditForm: FC<{ name: string; bio?: string }> = ({ name, bio 
   </>
 );
 
+// Utility to format date in ET
+function formatET(date: Date | string | number) {
+  return DateTime.fromJSDate(date instanceof Date ? date : new Date(date), { zone: "utc" })
+    .setZone("America/New_York")
+    .toFormat("yyyy-LL-dd HH:mm 'ET'");
+}
+
 // Add this helper function near the top of the file (after imports):
 function replaceMentionsWithLinks(content: string): string {
   // Replace @username (local) and @user@domain (remote)
@@ -890,3 +898,8 @@ function replaceMentionsWithLinks(content: string): string {
     }
   });
 }
+
+// In PostList, PostPage, and any other component that renders a post timestamp, replace:
+//   {post.created.toLocaleString()}
+// with:
+//   {formatET(post.created)}
