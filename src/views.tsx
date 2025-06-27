@@ -104,7 +104,7 @@ export const SetupForm: FC = () => (
 
 export const LoginForm: FC = () => (
   <>
-    <h1>Login to your microblog</h1>
+    <h1>Welcome back</h1>
     <form method="post" action="/login">
       <fieldset>
         <label>
