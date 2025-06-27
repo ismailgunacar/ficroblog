@@ -16,6 +16,24 @@ export const Layout: FC<{ user?: User & Actor; isAuthenticated?: boolean; childr
         href="https://cdn.jsdelivr.net/npm/@picocss/pico@2.0.6/css/pico.min.css"
         media="all"
       />
+      <style>{`
+        html, body {
+          overflow-x: hidden;
+          max-width: 100vw;
+        }
+        body, .container, .main, .content, .post, .profile, .timeline {
+          width: 100%;
+          box-sizing: border-box;
+        }
+        [style*='margin-left'], [style*='padding-left'] {
+          max-width: 100%;
+          box-sizing: border-box;
+        }
+        pre, code {
+          word-break: break-word;
+          white-space: pre-wrap;
+        }
+      `}</style>
     </head>
     <body>
       <main class="container">{props.children}</main>
