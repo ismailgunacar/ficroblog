@@ -4,7 +4,7 @@ import { makeLinksClickable } from "./utils.ts";
 import { DateTime } from "luxon";
 
 export const Layout: FC<{ user?: User & Actor; isAuthenticated?: boolean; children?: any }> = (props) => (
-  <html lang="en">
+  <html data-theme="light" lang="en">
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
@@ -13,110 +13,22 @@ export const Layout: FC<{ user?: User & Actor; isAuthenticated?: boolean; childr
       {/* Load CSS with high priority to prevent layout shifts */}
       <link
         rel="stylesheet"
-        href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"
+        href="https://cdn.jsdelivr.net/npm/@picocss/pico@2.0.6/css/pico.min.css"
         media="all"
       />
-      {/* Inline critical CSS to prevent layout shifts */}
-      <style>
-        {`
-          /* Critical styles that match Pico CSS defaults to prevent size changes */
-          :root {
-            --font-size: 1rem;
-            --line-height: 1.5;
-            --border-radius: 0.25rem;
-            --spacing: 1rem;
-          }
-          
-          html {
-            box-sizing: border-box;
-            font-size: 100%;
-            -webkit-text-size-adjust: 100%;
-            -ms-text-size-adjust: 100%;
-          }
-          
-          *, *::before, *::after {
-            box-sizing: inherit;
-          }
-          
-          body {
-            font-family: system-ui, -apple-system, "Segoe UI", "Roboto", "Ubuntu", "Cantarell", "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
-            font-size: var(--font-size);
-            line-height: var(--line-height);
-            margin: 0;
-            padding: 0;
-            -webkit-text-size-adjust: 100%;
-            -ms-text-size-adjust: 100%;
-          }
-          
-          .container, main.container {
-            width: 100%;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: var(--spacing);
-            box-sizing: border-box;
-          }
-          
-          /* Match Pico's default form element sizes without color overrides */
-          input, button, select, textarea {
-            font-family: inherit;
-            font-size: inherit;
-            line-height: inherit;
-            margin: 0;
-            padding: 0.75rem 1rem;
-            border-radius: var(--border-radius);
-            box-sizing: border-box;
-          }
-          
-          button, input[type="submit"] {
-            cursor: pointer;
-            padding: 0.75rem 1.5rem;
-          }
-          
-          h1, h2, h3 {
-            margin: 0 0 1rem 0;
-            font-weight: 600;
-            line-height: 1.25;
-          }
-          
-          h1 { font-size: 2rem; }
-          h2 { font-size: 1.5rem; }
-          
-          p {
-            margin: 0 0 1rem 0;
-          }
-          
-          /* Prevent any size jumps during CSS transition */
-          * {
-            transition: none !important;
-          }
-        `}
-      </style>
     </head>
     <body>
       <main class="container">{props.children}</main>
-      
-      {/* Prevent CSS size changes after external stylesheet loads */}
-      <script dangerouslySetInnerHTML={{
-        __html: `
-          // Store initial element sizes to prevent changes
-          document.addEventListener('DOMContentLoaded', function() {
-            // Remove transition restrictions after initial load
-            setTimeout(function() {
-              var style = document.createElement('style');
-              style.textContent = '* { transition: inherit !important; }';
-              document.head.appendChild(style);
-            }, 100);
-          });
-        `
-      }} />
-      {/* Add script to enable reply form toggling for SSR */}
       <script dangerouslySetInnerHTML={{
         __html: `
           document.addEventListener('DOMContentLoaded', function() {
-            document.querySelectorAll('button[data-reply-toggle]').forEach(function(btn) {
+            document.querySelectorAll('[data-reply-toggle]').forEach(function(btn) {
               btn.addEventListener('click', function() {
-                var form = document.getElementById(btn.getAttribute('data-reply-toggle'));
-                if (form) form.style.display = form.style.display === 'none' ? 'block' : 'none';
+                var formId = btn.getAttribute('data-reply-toggle');
+                var form = document.getElementById(formId);
+                if (form) {
+                  form.style.display = (form.style.display === 'none' || !form.style.display) ? 'block' : 'none';
+                }
               });
             });
           });
