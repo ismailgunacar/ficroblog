@@ -1002,39 +1002,58 @@ async function handleProfilePage(c: any, username: string) {
     { $lookup: { from: "likes", localField: "id", foreignField: "post_id", as: "likes" } },
     { $lookup: { from: "actors", localField: "likes.actor_id", foreignField: "id", as: "like_actors" } },
     { $lookup: { from: "reposts", localField: "id", foreignField: "post_id", as: "reposts" } },
-    { $addFields: { reposts: { $map: { input: "$reposts", as: "r", in: { $mergeObjects: ["$$r", { actor_id: { $toInt: "$$r.actor_id" } }] } } } },
-    { $lookup: { from: "actors", let: { repostActorIds: "$reposts.actor_id" }, pipeline: [ { $match: { $expr: { $in: ["$id", "$$repostActorIds"] } } } ], as: "repost_actors" } },
+    { $addFields: {
+        reposts: {
+          $map: {
+            input: "$reposts",
+            as: "r",
+            in: {
+              $mergeObjects: ["$$r", { actor_id: { $toInt: "$$r.actor_id" } }]
+            }
+          }
+        }
+      }
+    },
+    { $lookup: {
+        from: "actors",
+        let: { repostActorIds: "$reposts.actor_id" },
+        pipeline: [
+          { $match: { $expr: { $in: ["$id", "$$repostActorIds"] } } }
+        ],
+        as: "repost_actors"
+      }
+    },
     { $lookup: { from: "posts", localField: "id", foreignField: "reply_to", as: "replies" } },
-    { $addFields: { likesCount: { $size: "$likes" }, repostsCount: { $size: "$reposts" }, isLikedByUser: isAuthenticated ? { $in: [actor.id, "$likes.actor_id"] } : false, isRepostedByUser: isAuthenticated ? { $in: [actor.id, "$reposts.actor_id"] } : false } }
-  ]).toArray();
-  const postsWithActor = posts.map(post => ({ ...post, uri: actor.uri, handle: actor.handle, name: actor.name, user_id: actor.user_id, inbox_url: actor.inbox_url, shared_inbox_url: actor.shared_inbox_url, url: actor.url || post.url }));
-  const { _id, ...userWithActorClean } = userWithActor;
-  const postsWithActorClean = postsWithActor.map((rest: any) => rest);
-  const rootPosts = (postsWithActorClean as any[]).filter(post => !post.reply_to);
-  const rootPostIds = rootPosts.map(post => post.id);
-  const allReplies = await postsCollection.aggregate([
-    { $match: { reply_to: { $in: rootPostIds }, deleted: { $ne: true } } },
-    { $sort: { created: 1 } },
-    { $lookup: { from: "actors", localField: "actor_id", foreignField: "id", as: "actor" } },
-    { $lookup: { from: "likes", localField: "id", foreignField: "post_id", as: "likes" } },
-    { $lookup: { from: "actors", localField: "likes.actor_id", foreignField: "id", as: "like_actors" } },
-    { $lookup: { from: "reposts", localField: "id", foreignField: "post_id", as: "reposts" } },
-    { $addFields: { reposts: { $map: { input: "$reposts", as: "r", in: { $mergeObjects: ["$$r", { actor_id: { $toInt: "$$r.actor_id" } }] } } } },
-    { $lookup: { from: "actors", let: { repostActorIds: "$reposts.actor_id" }, pipeline: [ { $match: { $expr: { $in: ["$id", "$$repostActorIds"] } } } ], as: "repost_actors" } },
-    { $addFields: { likesCount: { $size: "$likes" }, repostsCount: { $size: "$reposts" } }
+    { $addFields: {
+        likesCount: { $size: "$likes" },
+        repostsCount: { $size: "$reposts" },
+        isLikedByUser: isAuthenticated ? { $in: [actor.id, "$likes.actor_id"] } : false,
+        isRepostedByUser: isAuthenticated ? { $in: [actor.id, "$reposts.actor_id"] } : false
+      }
     }
   ]).toArray();
-  const repliesWithActor = allReplies.map(reply => {
-    const replyActor = reply.actor && reply.actor[0] ? reply.actor[0] : {};
-    const { _id, actor: _actorArr, ...rest } = reply;
-    return { ...rest, uri: replyActor.uri || rest.uri, handle: replyActor.handle || rest.handle, name: replyActor.name || rest.name, user_id: replyActor.user_id || rest.user_id, inbox_url: replyActor.inbox_url || rest.inbox_url, shared_inbox_url: replyActor.shared_inbox_url || rest.shared_inbox_url, url: replyActor.url || rest.url, id: rest.id, actor_id: rest.actor_id, content: rest.content, created: rest.created, reply_to: rest.reply_to, likesCount: rest.likesCount, repostsCount: rest.repostsCount, like_actors: rest.like_actors, repost_actors: rest.repost_actors, isLikedByUser: rest.isLikedByUser, isRepostedByUser: rest.isRepostedByUser, replies: [] };
-  });
-  const replyMap = new Map<number, any>();
-  for (const reply of repliesWithActor) replyMap.set(reply.id, reply);
-  for (const reply of repliesWithActor) {
-    if (reply.reply_to && replyMap.has(reply.reply_to)) replyMap.get(reply.reply_to).replies.push(reply);
-  }
-  for (const post of rootPosts) post.replies = repliesWithActor.filter(r => r.reply_to === post.id);
+
+  // Attach actor fields to each post for UI compatibility
+  const postsWithActor = posts.map(post => ({
+    ...post,
+    uri: actor.uri,
+    handle: actor.handle,
+    name: actor.name,
+    user_id: actor.user_id,
+    inbox_url: actor.inbox_url,
+    shared_inbox_url: actor.shared_inbox_url,
+    url: actor.url || post.url,
+  }));
+
+  // Remove _id from userWithActor for type compatibility
+  const { _id, ...userWithActorClean } = userWithActor;
+
+  // Remove _id from posts for type compatibility
+  const postsWithActorClean = postsWithActor.map(({ _id, ...rest }) => rest);
+
+  // Only show root posts (not replies) at the top level
+  const rootPosts = postsWithActorClean.filter(post => !post.reply_to);
+
   return c.html(
     <Layout user={userWithActorClean as User & Actor} isAuthenticated={isAuthenticated}>
       <Profile
