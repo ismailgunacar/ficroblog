@@ -8,7 +8,7 @@ await configure({
   },
   filters: {},
   loggers: [
-    { category: "marco3", lowestLevel: "debug", sinks: ["console"] },
+    { category: "fongoblog", lowestLevel: "debug", sinks: ["console"] },
     { category: "fedify", lowestLevel: "info", sinks: ["console"] },
     { category: ["logtape", "meta"], lowestLevel: "warning", sinks: ["console"] },
   ],

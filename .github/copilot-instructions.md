@@ -1,6 +1,6 @@
 <!-- Use this file to provide workspace-specific custom instructions to Copilot. For more details, visit https://code.visualstudio.com/docs/copilot/copilot-customization#_use-a-githubcopilotinstructionsmd-file -->
 
-# Marco3 - Single User Microblog
+# Fongoblog - Federated MongoDB Atlas-based Single-User Microblog
 
 This is a single-user microblog application built with:
 - **Fedify**: ActivityPub server framework for TypeScript/JavaScript

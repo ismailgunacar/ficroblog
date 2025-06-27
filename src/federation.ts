@@ -27,12 +27,13 @@ import { stringifyEntities } from "stringify-entities";
 import { connectToDatabase, getUsersCollection, getActorsCollection, getKeysCollection, getFollowsCollection, getPostsCollection, getLikesCollection, getRepostsCollection } from "./db.ts";
 import { getNextSequence } from "./utils.ts";
 import type { Actor, Key, Post, User } from "./schema.ts";
+import { configDotenv } from "dotenv";
 
-const logger = getLogger("marco3");
+const logger = getLogger("fongoblog");
+configDotenv();
 
 // Ensure environment variables are available for federation context
 if (!process.env.MONGODB_URI) {
-  process.env.MONGODB_URI = "mongodb+srv://igunacar:fbVBpdpDuyTHxB5t@cluster0.isg22.mongodb.net/marco3?retryWrites=true&w=majority&appName=Cluster0";
   logger.warn("MONGODB_URI not found, using fallback for federation context");
 }
 if (!process.env.DOMAIN) {
@@ -59,7 +60,7 @@ export function createCanonicalContext(request: Request, data?: any) {
       method: 'GET', // Always use GET for federation context creation
       headers: {
         'Accept': 'application/activity+json',
-        'User-Agent': request.headers.get('User-Agent') || 'Marco3/1.0',
+        'User-Agent': request.headers.get('User-Agent'),
       },
     });
     return federation.createContext(canonicalRequest, data);

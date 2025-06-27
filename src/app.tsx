@@ -22,7 +22,7 @@ import {
   SetupForm,
 } from "./views.tsx";
 
-const logger = getLogger("marco3");
+const logger = getLogger("fongoblog");
 
 const app = new Hono();
 app.use(federation(fedi, () => undefined));
