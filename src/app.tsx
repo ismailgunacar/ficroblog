@@ -1750,22 +1750,29 @@ app.get("/.well-known/webfinger", async (c) => {
   const actorsCollection = getActorsCollection();
   const anyUser = await usersCollection.findOne({});
   if (!anyUser) {
+    logger.warn("WebFinger: No user found");
     return c.json({ error: "No user found" }, 404);
   }
   const user = anyUser as User;
   const actor = await actorsCollection.findOne({ user_id: user.id });
   if (!actor) {
+    logger.warn("WebFinger: No actor found");
     return c.json({ error: "No actor found" }, 404);
   }
   // Parse resource param (e.g., acct:username@domain)
   const resource = c.req.query("resource");
-  const expectedAcct = `acct:${user.username}@${c.req.header("host")}`;
-  if (!resource || resource !== expectedAcct) {
+  const host = c.req.header("host") || "";
+  const domain = process.env.DOMAIN || host;
+  const expectedAcct1 = `acct:${user.username}@${host}`.toLowerCase();
+  const expectedAcct2 = `acct:${user.username}@${domain}`.toLowerCase();
+  logger.info("WebFinger request", { resource, expectedAcct1, expectedAcct2 });
+  if (!resource || (resource.toLowerCase() !== expectedAcct1 && resource.toLowerCase() !== expectedAcct2)) {
+    logger.warn("WebFinger: Resource not found", { resource, expectedAcct1, expectedAcct2 });
     return c.json({ error: "Resource not found" }, 404);
   }
   // Compose WebFinger response
   const response = {
-    subject: expectedAcct,
+    subject: resource,
     aliases: [actor.uri, actor.url].filter(Boolean),
     links: [
       {
@@ -1780,6 +1787,7 @@ app.get("/.well-known/webfinger", async (c) => {
       },
     ],
   };
+  logger.info("WebFinger: Responding", response);
   return c.json(response);
 });
 
