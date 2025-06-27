@@ -1,4 +1,4 @@
-# Marco3 - Single User Microblog
+# Donald4 - Single User Microblog
 
 A federated single-user microblog built with Fedify and MongoDB Atlas. This application implements the ActivityPub protocol, allowing it to interact with other federated social media platforms like Mastodon, Misskey, and others.
 

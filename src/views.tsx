@@ -8,7 +8,7 @@ export const Layout: FC<{ user?: User & Actor; isAuthenticated?: boolean; childr
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
       <meta name="color-scheme" content="light dark" />
-      <title>Marco3 - Single User Microblog</title>
+      <title>Donald4 - Single User Microblog</title>
       {/* Load CSS with high priority to prevent layout shifts */}
       <link
         rel="stylesheet"
