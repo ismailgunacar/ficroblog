@@ -144,19 +144,19 @@ federation
     const domain = getCanonicalDomain();
     const actorUrl = `${domain}/users/${identifier}`;
     return new Person({
-      id: new URL(actorUrl),
+      id: ctx.getActorUri(identifier),
       preferredUsername: identifier,
       name: actor.name,
       summary: actor.summary, // Include bio/description for fediverse compatibility
-      inbox: new URL(`${actorUrl}/inbox`),
-      outbox: new URL(`${actorUrl}/outbox`),
+      inbox: ctx.getInboxUri(identifier),
+      outbox: ctx.getOutboxUri(identifier),
       endpoints: new Endpoints({
-        sharedInbox: new URL(`${domain}/inbox`),
+        sharedInbox: ctx.getInboxUri(),
       }),
-      url: new URL(actorUrl),
+      url: ctx.getActorUri(identifier),
       publicKey: keys[0]?.cryptographicKey,
       assertionMethods: keys.map((k) => k.multikey),
-      followers: new URL(`${actorUrl}/followers`),
+      followers: ctx.getFollowersUri(identifier),
     });
   })
   .setKeyPairsDispatcher(async (ctx, identifier) => {
