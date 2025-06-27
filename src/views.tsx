@@ -585,10 +585,12 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
             </button>
             {renderActorList(post.repost_actors)}
             {/* Reply button toggles reply form */}
-            <button
-              type="button"
-              data-reply-toggle={replyFormId}
-            >💬 Reply</button>
+            {isAuthenticated && (
+              <button
+                type="button"
+                data-reply-toggle={replyFormId}
+              >💬 Reply</button>
+            )}
           </div>
         </footer>
       </article>
