@@ -128,6 +128,7 @@ export interface ProfileProps {
   bio?: string;
   following: number;
   followers: number;
+  isAuthenticated?: boolean;
 }
 
 export const Profile: FC<ProfileProps> = ({
@@ -137,6 +138,7 @@ export const Profile: FC<ProfileProps> = ({
   bio,
   following,
   followers,
+  isAuthenticated = false,
 }) => (
   <>
     <hgroup>
@@ -145,13 +147,24 @@ export const Profile: FC<ProfileProps> = ({
       </h1>
       <p>
         <span style="user-select: all;">{handle}</span> &middot;{" "}
-        <a href={`/users/${username}/following`}>{following} following</a>{" "}
+        <a href={`/${username}/following`}>{following} following</a>{" "}
         &middot;{" "}
-        <a href={`/users/${username}/followers`}>
+        <a href={`/${username}/followers`}>
           {followers === 1 ? "1 follower" : `${followers} followers`}
         </a>
-        {" "}&middot;{" "}
-        <a href="/profile/edit">Edit Profile</a>
+        {isAuthenticated ? (
+          <>
+            {" "}&middot;{" "}
+            <a href="/profile/edit">Edit Profile</a>
+            {" | "}
+            <a href="/logout">Logout</a>
+          </>
+        ) : (
+          <>
+            {" | "}
+            <a href="/login">Login</a>
+          </>
+        )}
       </p>
       {bio && (
         <div 
@@ -166,9 +179,11 @@ export const Profile: FC<ProfileProps> = ({
 export interface HomeProps extends PostListProps {
   user: User & Actor;
   isAuthenticated?: boolean;
+  following: number;
+  followers: number;
 }
 
-export const Home: FC<HomeProps> = ({ user, posts, isAuthenticated = false }) => (
+export const Home: FC<HomeProps> = ({ user, posts, isAuthenticated = false, following, followers }) => (
   <>
     {/* Profile header with bio */}
     <hgroup>
@@ -177,6 +192,12 @@ export const Home: FC<HomeProps> = ({ user, posts, isAuthenticated = false }) =>
       </h1>
       <p>
         <span style="user-select: all;">{user.handle}</span>
+        {" "}&middot;{" "}
+        <a href={`/${user.username}/following`}>{following} following</a>{" "}
+        &middot;{" "}
+        <a href={`/${user.username}/followers`}>
+          {followers === 1 ? "1 follower" : `${followers} followers`}
+        </a>
         {isAuthenticated && (
           <>
             {" "}&middot;{" "}
@@ -203,7 +224,7 @@ export const Home: FC<HomeProps> = ({ user, posts, isAuthenticated = false }) =>
     {/* Only show follow form and post form when authenticated */}
     {isAuthenticated && (
       <>
-        <form method="post" action={`/users/${user.username}/following`}>
+        <form method="post" action={`/${user.username}/following`}>
           {/* biome-ignore lint/a11y/noRedundantRoles: PicoCSS requires role=group */}
           <fieldset role="group">
             <input
@@ -248,6 +269,7 @@ export const Home: FC<HomeProps> = ({ user, posts, isAuthenticated = false }) =>
     </div>
     
     {/* Infinite scroll script */}
+    {/*
     <script dangerouslySetInnerHTML={{
       __html: `
         let isLoading = false;
@@ -289,45 +311,6 @@ export const Home: FC<HomeProps> = ({ user, posts, isAuthenticated = false }) =>
             });
         }
         
-        function createPostHTML(post) {
-          const formatTimestamp = (timestamp) => {
-            try {
-              const date = new Date(timestamp);
-              return {
-                iso: date.toISOString(),
-                display: date.toLocaleString()
-              };
-            } catch (error) {
-              return { iso: '', display: 'Invalid date' };
-            }
-          };
-          const timestamp = formatTimestamp(post.created);
-          const isLocal = post.user_id || (post.handle && (post.handle.includes('@gunac.ar') || post.handle.includes('@localhost:8000')));
-          const username = post.handle.split('@')[1] || post.handle.split('@')[0];
-          const href = isLocal ? '/users/' + username : (post.url || post.uri);
-          return \`
-            <article>
-              <header>
-                \${post.name ? 
-                  '<a href="' + href + '"><strong>' + post.name + '</strong></a> <small>(<a href="' + href + '" class="secondary">' + post.handle + '</a>)</small>' :
-                  '<a href="' + href + '" class="secondary">' + post.handle + '</a>'
-                }
-              </header>
-              <div>\${makeLinksClickable(post.content)}</div>
-              <footer>
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <a href="\${post.url || post.uri}">
-                    <time datetime="\${timestamp.iso}">\${timestamp.display}</time>
-                  </a>
-                  <div style="display: flex; gap: 1rem; align-items: center; color: var(--muted-color);">
-                    <span>🤍 \${post.likesCount || 0}</span>
-                    <span>🔄 \${post.repostsCount || 0}</span>
-                  </div>
-                </div>
-              </footer>
-            </article>
-          \`;
-        }
         // Scroll event listener
         function handleScroll() {
           if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 1000) {
@@ -344,29 +327,58 @@ export const Home: FC<HomeProps> = ({ user, posts, isAuthenticated = false }) =>
         });
       `
     }} />
+    */}
   </>
 );
 
 export interface PostListProps {
   posts: (Post & Actor)[];
   isAuthenticated?: boolean;
+  isReply?: boolean;
 }
 
-export const PostList: FC<PostListProps> = ({ posts, isAuthenticated = false }) => (
-  <>
-    {posts.map((post: any) => (
-      <div key={post.id} id={`post-${post.id}`} data-post-id={post.id}>
-        <PostView post={post} isAuthenticated={isAuthenticated} />
-        {/* Render replies if present */}
-        {Array.isArray(post.replies) && post.replies.length > 0 && (
-          <div style={{ marginLeft: '2rem', paddingLeft: '1rem' }}>
-            <PostList posts={post.replies} isAuthenticated={isAuthenticated} />
+export const PostList: FC<PostListProps> = ({ posts, isAuthenticated = false, isReply = false }) => {
+  // Normalize actor fields for all posts (including replies)
+  const normalizeActorFields = (post: any) => {
+    let normalized = post;
+    // Always fill missing name/handle/uri/url from actor subobject if present
+    if (post.actor && typeof post.actor === 'object') {
+      normalized = {
+        ...post,
+        name: post.name || post.actor.name,
+        handle: post.handle || post.actor.handle,
+        uri: post.uri || post.actor.uri,
+        url: post.url || post.actor.url,
+      };
+    }
+    // Recursively normalize replies if present
+    if (Array.isArray(normalized.replies)) {
+      normalized = {
+        ...normalized,
+        replies: normalized.replies.map(normalizeActorFields)
+      };
+    }
+    return normalized;
+  };
+  return (
+    <>
+      {posts.map((post: any) => {
+        const normalizedPost = normalizeActorFields(post);
+        return (
+          <div key={normalizedPost.id} id={`post-${normalizedPost.id}`} data-post-id={normalizedPost.id}>
+            <PostView post={normalizedPost} isAuthenticated={isAuthenticated} isReply={isReply} />
+            {/* Render replies if present */}
+            {Array.isArray(normalizedPost.replies) && normalizedPost.replies.length > 0 && (
+              <div style={{ marginLeft: '2rem', paddingLeft: '1rem' }}>
+                <PostList posts={normalizedPost.replies} isAuthenticated={isAuthenticated} isReply={true} />
+              </div>
+            )}
           </div>
-        )}
-      </div>
-    ))}
-  </>
-);
+        );
+      })}
+    </>
+  );
+};
 
 export interface PostViewProps {
   post: (Post & Actor & {
@@ -380,9 +392,10 @@ export interface PostViewProps {
     parent_post?: Post & Actor;
   });
   isAuthenticated?: boolean;
+  isReply?: boolean;
 }
 
-export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) => {
+export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false, isReply = false }) => {
   // Helper function to safely format timestamp
   const formatTimestamp = (timestamp: any): { iso: string; display: string } => {
     try {
@@ -465,10 +478,10 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
 
   // Helper to get the canonical post page URL
   const getPostPageUrl = (post: Post & Actor) => {
-    // Prefer local user posts: /users/:username/posts/:id
+    // Prefer local user posts: /:username/posts/:id
     if (post.user_id && post.handle) {
       const username = post.handle.split('@')[1] || post.handle.split('@')[0];
-      const url = `/users/${username}/posts/${post.id}`;
+      const url = `/${username}/posts/${post.id}`;
       return url;
     }
     // Fallback to post.url or post.uri
@@ -485,132 +498,118 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
     } catch {}
   }
 
-  // Use a semantic <a> tag for the clickable post wrapper
+  // Use a semantic <a> tag for the clickable post wrapper only for top-level posts
+  // if (!isReply) {
+  //   // Top-level post: clickable post wrapper
+  //   return (
+  //     <a
+  //       href={getPostPageUrl(post)}
+  //       style={{
+  //         display: 'block',
+  //         textDecoration: 'none',
+  //         color: 'inherit',
+  //         cursor: 'pointer',
+  //         outline: 'none',
+  //       }}
+  //       tabIndex={0}
+  //       onClick={e => {
+  //         // Only prevent navigation if clicking a button, form, or link inside
+  //         if (
+  //           e.target instanceof HTMLElement &&
+  //           ['BUTTON', 'A', 'FORM'].includes(e.target.tagName)
+  //         ) {
+  //           e.preventDefault();
+  //           return;
+  //         }
+  //       }}
+  //       onKeyDown={e => {
+  //         if ((e.key === 'Enter' || e.key === ' ') && !(e.target instanceof HTMLButtonElement)) {
+  //           window.location.href = getPostPageUrl(post);
+  //         }
+  //       }}
+  //     >
+  //       <article ... > ... </article>
+  //     </a>
+  //   );
+  // } else {
+  //   ...
+  // }
+  // Instead, always use a plain article for both top-level posts and replies:
   return (
-    <a
-      href={getPostPageUrl(post)}
-      style={{
-        display: 'block',
-        textDecoration: 'none',
-        color: 'inherit',
-        cursor: 'pointer',
-        outline: 'none',
-      }}
-      tabIndex={0}
-      onClick={e => {
-        // Only prevent navigation if clicking a button, form, or link inside
-        if (
-          e.target instanceof HTMLElement &&
-          ['BUTTON', 'A', 'FORM'].includes(e.target.tagName)
-        ) {
-          e.preventDefault();
-          // Do NOT navigate if clicking an inner button, link, or form
-          return;
-        }
-        // Otherwise, allow default navigation
-      }}
-      onKeyDown={e => {
-        if ((e.key === 'Enter' || e.key === ' ') && !(e.target instanceof HTMLButtonElement)) {
-          window.location.href = getPostPageUrl(post);
-        }
-      }}
-    >
-      <article style={{ marginBottom: '2rem', borderLeft: post.reply_to ? '2px solid #ccc' : undefined, paddingLeft: post.reply_to ? '1rem' : undefined }}>
-        <header>
-          {/* Fix: Only the post wrapper links to the post page. The name/handle links to the user page. */}
-          <span onClick={e => e.stopPropagation()}>
-            <ActorLink actor={post} />
+    <article style={{ marginBottom: '2rem', borderLeft: post.reply_to ? '2px solid #ccc' : undefined, paddingLeft: post.reply_to ? '1rem' : undefined }}>
+      <header>
+        <span>
+          <ActorLink actor={post} />
+        </span>
+      </header>
+      {/* Always linkify mentions and URLs in post content */}
+      <div dangerouslySetInnerHTML={{ __html: makeLinksClickable(replaceMentionsWithLinks(post.content)) }} />
+      <footer>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <a href={getPostPageUrl(post)}>
+              <time datetime={timestamp.iso}>
+                {timestamp.display}
+              </time>
+            </a>
+            {/* Permalink icon/link */}
+            {typeof window !== 'undefined' && isOnPostPage ? (
+              <span title="Permalink to this post" style={{ fontSize: '1.1em', textDecoration: 'none', opacity: 0.5, cursor: 'default' }}>🔗</span>
+            ) : (
+              <a href={getPostPageUrl(post)} title="Permalink to this post" style={{ fontSize: '1.1em', textDecoration: 'none' }}>🔗</a>
+            )}
           </span>
-        </header>
-        {/* Render post content: only linkify mentions for local posts */}
-        {post.user_id != null ? (
-          <div dangerouslySetInnerHTML={{ __html: makeLinksClickable(replaceMentionsWithLinks(post.content)) }} />
-        ) : (
-          <div dangerouslySetInnerHTML={{ __html: post.content }} />
-        )}
-        <footer>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <a href={post.url ?? post.uri} onClick={e => e.preventDefault()}>
-                <time datetime={timestamp.iso}>
-                  {timestamp.display}
-                </time>
-              </a>
-              {/* Permalink icon/link */}
-              {typeof window !== 'undefined' && isOnPostPage ? (
-                <span title="Permalink to this post" style={{ fontSize: '1.1em', textDecoration: 'none', opacity: 0.5, cursor: 'default' }}>🔗</span>
-              ) : (
-                <a href={getPostPageUrl(post)} title="Permalink to this post" style={{ fontSize: '1.1em', textDecoration: 'none' }}>🔗</a>
-              )}
-            </span>
-            {isAuthenticated && !post.deleted && (
-              <form method="post" action={`/posts/${post.id}/delete`} style={{ display: 'inline' }} onSubmit={e => { if(!confirm('Delete this post?')) e.preventDefault(); }}>
-                <button type="submit" style={{ color: 'red', background: 'none', border: 'none', cursor: 'pointer' }}>🗑️ Delete</button>
-              </form>
-            )}
-          </div>
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          {isAuthenticated && !post.deleted && (
+            <form method="post" action={`/posts/${post.id}/delete`} style={{ display: 'inline' }} onSubmit={e => { if(!confirm('Delete this post?')) e.preventDefault(); }}>
+              <button type="submit" style={{ color: 'red', background: 'none', border: 'none', cursor: 'pointer' }}>🗑️ Delete</button>
+            </form>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={handleLike}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.25rem',
+              color: post.isLikedByUser ? 'red' : 'inherit'
+            }}
+            title={post.isLikedByUser ? 'Unlike' : 'Like'}
+          >
+            {post.isLikedByUser ? '❤️' : '🤍'} {post.likesCount || 0}
+          </button>
+          {Array.isArray(post.like_actors) && post.like_actors.some(a => a && typeof a.handle === 'string' && a.handle.trim() !== '') && renderActorList(post.like_actors)}
+          <button
+            type="button"
+            onClick={handleRepost}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.25rem',
+              color: post.isRepostedByUser ? 'green' : 'inherit'
+            }}
+            title={post.isRepostedByUser ? 'Unrepost' : 'Repost'}
+          >
+            {post.isRepostedByUser ? '🔁' : '🔄'} {post.repostsCount || 0}
+          </button>
+          {renderActorList(post.repost_actors)}
+          {/* Reply button toggles reply form */}
+          {isAuthenticated && (
             <button
               type="button"
-              onClick={handleLike}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.25rem',
-                color: post.isLikedByUser ? 'red' : 'inherit'
-              }}
-              title={post.isLikedByUser ? 'Unlike' : 'Like'}
-            >
-              {post.isLikedByUser ? '❤️' : '🤍'} {post.likesCount || 0}
-            </button>
-            {Array.isArray(post.like_actors) && post.like_actors.some(a => a && typeof a.handle === 'string' && a.handle.trim() !== '') && renderActorList(post.like_actors)}
-            <button
-              type="button"
-              onClick={handleRepost}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.25rem',
-                color: post.isRepostedByUser ? 'green' : 'inherit'
-              }}
-              title={post.isRepostedByUser ? 'Unrepost' : 'Repost'}
-            >
-              {post.isRepostedByUser ? '🔁' : '🔄'} {post.repostsCount || 0}
-            </button>
-            {renderActorList(post.repost_actors)}
-            {/* Reply button toggles reply form */}
-            {isAuthenticated && (
-              <button
-                type="button"
-                data-reply-toggle={replyFormId}
-              >💬 Reply</button>
-            )}
-          </div>
-        </footer>
-      </article>
-      {/* Reply form, hidden by default, toggled by reply button */}
-      <form
-        id={replyFormId}
-        method="post"
-        action="/"
-        style={{ display: 'none', marginTop: '1rem', marginLeft: '2rem', borderLeft: '2px solid #eee', paddingLeft: '1rem' }}
-      >
-        <input type="hidden" name="reply_to" value={post.id} />
-        <fieldset>
-          <label>
-            Reply:
-            <textarea name="content" required rows={2} maxLength={500} placeholder="Write your reply..." />
-          </label>
-        </fieldset>
-        <input type="submit" value="Reply" />
-      </form>
-    </a>
+              data-reply-toggle={replyFormId}
+            >💬 Reply</button>
+          )}
+        </div>
+      </footer>
+    </article>
   );
 };
 
@@ -625,6 +624,7 @@ export const PostPage: FC<PostPageProps> = (props) => (
       bio={props.bio}
       following={props.following}
       followers={props.followers}
+      isAuthenticated={props.isAuthenticated}
     />
     <PostView post={props.post} isAuthenticated={props.isAuthenticated} />
     {/* Show replies to this post, if any */}
@@ -709,7 +709,13 @@ export interface ActorLinkProps {
 
 export const ActorLink: FC<ActorLinkProps> = ({ actor }) => {
   if (!actor) {
-    return <span>Unknown user</span>;
+    // If actor is completely missing, show empty header
+    return (
+      <>
+        <a href="#"><strong></strong></a>{' '}
+        <small>(<a href="#" class="secondary"></a>)</small>
+      </>
+    );
   }
   
   let href: string;
@@ -735,33 +741,27 @@ export const ActorLink: FC<ActorLinkProps> = ({ actor }) => {
       // Username is the part before the second @, e.g. ismailgunacar in ismailgunacar@gunac.ar
       const parts = handle.split('@');
       username = parts.length > 1 ? parts[0] : handle;
+    } else if (actor.uri) {
+      // Try to extract username from URI if possible
+      const match = actor.uri.match(/\/([^\/]+)$/);
+      username = match ? match[1] : 'user';
     } else {
       username = 'user';
     }
-    href = `/users/${username}`;
+    href = `/${username}`;
   } else {
     // Remote user - link to their external profile
-    href = actor.url ?? actor.uri;
+    href = actor.url ?? actor.uri ?? '#';
   }
   
-  const handle = actor.handle || `@unknown@unknown`;
-  const name = actor.name;
-  
-  return name ? (
+  // Always show both name and handle, even if missing
+  const name = actor.name ?? '';
+  const handle = actor.handle ?? '';
+  return (
     <>
-      <a href={href}><strong>{name}</strong></a>{" "}
-      <small>
-        (
-        <a href={href} class="secondary">
-          {handle}
-        </a>
-        )
-      </small>
+      <a href={href}><strong>{name}</strong></a>{' '}
+      <small>(<a href={href} class="secondary">{handle}</a>)</small>
     </>
-  ) : (
-    <a href={href} class="secondary">
-      {handle}
-    </a>
   );
 };
 
@@ -808,7 +808,7 @@ function replaceMentionsWithLinks(content: string): string {
       return `${space}<a href="${url}" class="u-url mention" rel="nofollow">@${username}@${domain}</a>`;
     } else {
       // Local mention
-      return `${space}<a href="/users/${username}" class="u-url mention">@${username}</a>`;
+      return `${space}<a href="/${username}" class="u-url mention">@${username}</a>`;
     }
   });
 }
