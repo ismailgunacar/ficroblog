@@ -15,7 +15,8 @@ export async function handleProfilePage(c: any, username: string) {
   const likesCollection = getLikesCollection();
   const repostsCollection = getRepostsCollection();
 
-  const user = await usersCollection.findOne({ username });
+  // Always fetch the single user (id: 1)
+  const user = await usersCollection.findOne({ id: 1 });
   if (!user) return c.notFound();
   const actor = await actorsCollection.findOne({ user_id: user.id });
   if (!actor) return c.notFound();
@@ -104,7 +105,8 @@ export async function handlePostPage(c: any, username: string, postId: number) {
   const postsCollection = getPostsCollection();
   const followsCollection = getFollowsCollection();
 
-  const user = await usersCollection.findOne({ username });
+  // Always fetch the single user (id: 1)
+  const user = await usersCollection.findOne({ id: 1 });
   if (!user) return c.notFound();
   const actor = await actorsCollection.findOne({ user_id: user.id });
   if (!actor) return c.notFound();
@@ -123,102 +125,14 @@ export async function handlePostPage(c: any, username: string, postId: number) {
       if (currentActor) currentActorId = currentActor.id;
     }
   }
-  const likesCollection = getLikesCollection();
-  const repostsCollection = getRepostsCollection();
-  const likes = await likesCollection.find({ post_id: post.id }).toArray();
-  const reposts = await repostsCollection.find({ post_id: post.id }).toArray();
-  const likeActorIds = likes.map((l: any) => l.actor_id);
-  const repostActorIds = reposts.map((r: any) => r.actor_id);
-  const like_actors = likeActorIds.length > 0 ? await actorsCollection.find({ id: { $in: likeActorIds } }).toArray() as Actor[] : [];
-  const repost_actors = repostActorIds.length > 0 ? await actorsCollection.find({ id: { $in: repostActorIds } }).toArray() as Actor[] : [];
-  const postWithActor = {
-    ...post,
-    ...actorWithUsername,
-    likesCount: likes.length,
-    repostsCount: reposts.length,
-    like_actors,
-    repost_actors,
-    isLikedByUser: currentActorId ? likes.some((l: any) => l.actor_id === currentActorId) : false,
-    isRepostedByUser: currentActorId ? reposts.some((r: any) => r.actor_id === currentActorId) : false,
-    username: user.username, // Ensure username is present
-  };
-  const { _id, ...postWithActorClean } = postWithActor;
-  const replies = await postsCollection.aggregate([
-    { $match: { reply_to: postId, deleted: { $ne: true } } },
-    { $sort: { created: 1 } },
-    { $lookup: { from: "actors", localField: "actor_id", foreignField: "id", as: "actor" } },
-    { $lookup: { from: "likes", localField: "id", foreignField: "post_id", as: "likes" } },
-    { $lookup: { from: "actors", localField: "likes.actor_id", foreignField: "id", as: "like_actors" } },
-    { $lookup: { from: "reposts", localField: "id", foreignField: "post_id", as: "reposts" } },
-    { $addFields: {
-        reposts: {
-          $map: {
-            input: "$reposts",
-            as: "r",
-            in: {
-              $mergeObjects: ["$$r", { actor_id: { $toInt: "$$r.actor_id" } }]
-            }
-          }
-        }
-      }
-    },
-    { $lookup: {
-        from: "actors",
-        let: { repostActorIds: "$reposts.actor_id" },
-        pipeline: [
-          { $match: { $expr: { $in: ["$id", "$$repostActorIds"] } } }
-        ],
-        as: "repost_actors"
-      }
-    },
-    { $addFields: {
-        likesCount: { $size: "$likes" },
-        repostsCount: { $size: "$reposts" }
-      }
-    }
-  ]).toArray();
-  const repliesWithActor = replies.map((reply: any) => {
-    const replyActor = reply.actor && reply.actor[0] ? { ...reply.actor[0], username: user.username } : { username: user.username };
-    const { _id, actor: _actorArr, ...rest } = reply;
-    return {
-      ...rest,
-      ...replyActor,
-      likesCount: rest.likesCount,
-      repostsCount: rest.repostsCount,
-      like_actors: rest.like_actors,
-      repost_actors: rest.repost_actors,
-      isLikedByUser: rest.isLikedByUser,
-      isRepostedByUser: rest.isRepostedByUser,
-      username: user.username, // Ensure username is present
-    };
-  });
-  const postWithReplies = {
-    ...post,
-    ...actorWithUsername,
-    likesCount: likes.length,
-    repostsCount: reposts.length,
-    like_actors,
-    repost_actors,
-    isLikedByUser: currentActorId ? likes.some((l: any) => l.actor_id === currentActorId) : false,
-    isRepostedByUser: currentActorId ? reposts.some((r: any) => r.actor_id === currentActorId) : false,
-    replies: repliesWithActor,
-    username: user.username, // Ensure username is present
-  };
-  const canonicalUrl = `/users/${username}/posts/${postId}`;
-  if (c.req.path !== canonicalUrl) {
-    return c.redirect(canonicalUrl);
-  }
   return c.html(
-    <Layout>
+    <Layout user={{ ...user, ...actorWithUsername }} isAuthenticated={isAuthenticated}>
       <PostPage
-        name={actor.name ?? user.username}
-        username={user.username}
-        handle={actor.handle}
-        bio={actor.summary}
-        following={followingCount}
-        followers={followersCount}
-        post={postWithReplies}
+        post={{ ...post, ...actorWithUsername, username: user.username }}
         isAuthenticated={isAuthenticated}
+        followersCount={followersCount}
+        followingCount={followingCount}
+        currentActorId={currentActorId}
       />
     </Layout>
   );

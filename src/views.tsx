@@ -269,7 +269,7 @@ export const Home: FC<HomeProps> = ({ user, posts, isAuthenticated = false }) =>
             .then(data => {
               const container = document.getElementById('posts-container');
               
-              data.posts.forEach post => {
+              data.posts.forEach(post => {
                 const postDiv = document.createElement('div');
                 postDiv.innerHTML = createPostHTML(post);
                 container.appendChild(postDiv.firstChild);

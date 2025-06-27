@@ -21,12 +21,13 @@ import {
   ProfileEditForm,
   SetupForm,
 } from "./views.tsx";
-import userRoutes from "./routes/user.ts";
+import { handleProfilePage, handlePostPage, serveActivityPubPost } from "./controllers/user.tsx";
 
 const logger = getLogger("fongoblog");
 
 const app = new Hono();
-app.use(federation(fedi, () => undefined));
+// Remove global federation middleware
+// app.use(federation(fedi, () => undefined));
 
 // Home page
 app.get("/", async (c) => {
@@ -570,18 +571,34 @@ app.post("/setup", async (c) => {
   }
 });
 
-// Register Mastodon-style user and post routes
-app.route("/", userRoutes);
+// Pretty Mastodon-style user and post routes
+app.get("/@:username", async (c) => {
+  // Always fetch the canonical username from the DB
+  const usersCollection = getUsersCollection();
+  await connectToDatabase();
+  const user = await usersCollection.findOne({ id: 1 });
+  const canonicalUsername = user?.username || "user";
+  return handleProfilePage(c, canonicalUsername);
+});
+app.get("/@:username/posts/:id", async (c) => {
+  const username = c.req.param("username") || "user";
+  const postId = parseInt(c.req.param("id"));
+  return handlePostPage(c, username, postId);
+});
+app.get("/@:username/posts/:id.json", async (c) => {
+  return serveActivityPubPost(c);
+});
 
 // Logout route
 app.get("/logout", async (c) => {
   destroySession(c);
-  // Redirect to login after logout
-  return c.redirect("/login");
+  // Redirect to home after logout
+  return c.redirect("/");
 });
 
 // Login page
 app.get("/login", redirectIfAuthenticated(), async (c) => {
+  console.log("[DEBUG] /login route hit");
   // Always destroy any existing session before showing login form
   destroySession(c);
   return c.html(
@@ -934,17 +951,9 @@ app.get("/posts/:id", async (c) => {
 });
 
 // --- ActivityPub JSON endpoints for federation (keep username in path for compatibility) ---
-app.get("/users/:username", async (c) => {
-  // Always serve ActivityPub JSON for federation
-  // (do not render HTML or redirect)
-  const { serveActivityPubProfile } = await import("./controllers/user.tsx");
-  return serveActivityPubProfile(c);
-});
-app.get("/users/:username/posts/:id.json", async (c) => {
-  c.req.raw.headers.set("Accept", "application/activity+json");
-  const { serveActivityPubPost } = await import("./controllers/user.tsx");
-  return serveActivityPubPost(c);
-});
+app.use("/users/:username", federation(fedi, () => undefined));
+app.use("/users/:username/posts/:id.json", federation(fedi, () => undefined));
+app.use("/.well-known/webfinger", federation(fedi, () => undefined));
 
 // Like a post
 app.post("/posts/:id/like", requireAuth(), async (c) => {
@@ -1218,20 +1227,23 @@ app.get("/.well-known/webfinger", async (c) => {
     subject: resource,
     aliases: [actor.uri, actor.url].filter(Boolean),
     links: [
-      {
-        rel: "self",
-        type: "application/activity+json",
-        href: actor.uri,
-      },
-      {
-        rel: "http://webfinger.net/rel/profile-page",
-        type: "text/html",
-        href: actor.url,
-      },
-    ],
+      { rel: "self", type: "application/activity+json", href: actor.uri },
+      { rel: "alternate", type: "text/html", href: actor.url },
+      { rel: "http://webfinger.net/rel/profile-page", template: `${actor.url}?id={uri}` },
+      { rel: "http://webfinger.net/rel/avatar", href: actor.avatar_url },
+      { rel: "http://webfinger.net/rel/registration", href: `${actor.url}/outbox` },
+    ]
   };
-  logger.info("WebFinger: Responding", response);
+
   return c.json(response);
+});
+
+// --- Debugging and health check routes ---
+app.get("/debug", async (c) => {
+  return c.json({ status: "ok", time: new Date() });
+});
+app.get("/health", async (c) => {
+  return c.json({ status: "healthy" });
 });
 
 export default app;

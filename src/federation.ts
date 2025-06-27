@@ -134,30 +134,32 @@ federation
     const usersCollection = getUsersCollection();
     const actorsCollection = getActorsCollection();
 
-    const user = await usersCollection.findOne({ username: identifier });
+    // Always fetch the single user (id: 1) and their actor
+    const user = await usersCollection.findOne({ id: 1 });
     if (!user) return null;
-
-    const actor = await actorsCollection.findOne({ user_id: user.id });
+    const actor = await actorsCollection.findOne({ user_id: 1 });
     if (!actor) return null;
 
-    const keys = await ctx.getActorKeyPairs(identifier);
+    const keys = await ctx.getActorKeyPairs(user.username);
     // Always use canonical HTTPS domain for all URLs
     const domain = getCanonicalDomain();
-    const actorUrl = `${domain}/users/${identifier}`;
+    // Use the param for pretty URLs, but canonical username for data
+    const prettyUsername = identifier;
+    const canonicalUsername = user.username;
     return new Person({
-      id: ctx.getActorUri(identifier),
-      preferredUsername: identifier,
+      id: ctx.getActorUri(prettyUsername), // pretty URL
+      preferredUsername: canonicalUsername, // canonical username
       name: actor.name,
       summary: actor.summary, // Include bio/description for fediverse compatibility
-      inbox: ctx.getInboxUri(identifier),
-      outbox: ctx.getOutboxUri(identifier),
+      inbox: ctx.getInboxUri(prettyUsername),
+      outbox: ctx.getOutboxUri(prettyUsername),
       endpoints: new Endpoints({
         sharedInbox: ctx.getInboxUri(),
       }),
-      url: ctx.getActorUri(identifier),
+      url: ctx.getActorUri(prettyUsername),
       publicKey: keys[0]?.cryptographicKey,
       assertionMethods: keys.map((k) => k.multikey),
-      followers: ctx.getFollowersUri(identifier),
+      followers: ctx.getFollowersUri(prettyUsername),
     });
   })
   .setKeyPairsDispatcher(async (ctx, identifier) => {
