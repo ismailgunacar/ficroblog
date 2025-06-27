@@ -1675,27 +1675,15 @@ app.post("/inbox", async (c) => {
     const existing = await postsCollection.findOne({ uri: note.id || note.url });
     if (existing) return c.text("Already exists", 200);
 
-    // Always assign a unique numeric id for remote posts
-    const newPostId = await getNextSequence("posts");
-
-    // If this is a reply, try to resolve the parent post's numeric id
-    let replyToId: number | undefined = undefined;
-    if (note.inReplyTo && typeof note.inReplyTo === "string") {
-      const parent = await postsCollection.findOne({ uri: note.inReplyTo });
-      if (parent && typeof parent.id === "number") {
-        replyToId = parent.id;
-      }
-    }
-
     // Insert the remote post
     await postsCollection.insertOne({
-      id: newPostId,
+      id: typeof note.id === "string" ? undefined : note.id, // fallback if numeric
       uri: note.id || note.url,
       actor_id: remoteActor.id,
       content: note.content,
       url: note.url || note.id,
       created: note.published ? new Date(note.published) : new Date(),
-      reply_to: replyToId,
+      reply_to: note.inReplyTo ? (typeof note.inReplyTo === "string" ? note.inReplyTo : undefined) : undefined,
       deleted: false
     });
     return c.text("OK", 200);
