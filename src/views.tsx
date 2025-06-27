@@ -108,11 +108,13 @@ export const LoginForm: FC = () => (
     <form method="post" action="/login">
       <fieldset>
         <label>
-          Password{" "}
+          Password
           <input
             type="password"
             name="password"
             required
+            autoFocus
+            autoComplete="current-password"
           />
         </label>
       </fieldset>
@@ -141,13 +143,13 @@ export const Profile: FC<ProfileProps> = ({
   <>
     <hgroup>
       <h1>
-        <a href="/">{name}</a>
+        <a href={`/@${username}`}>{name}</a>
       </h1>
       <p>
         <span style="user-select: all;">{handle}</span> &middot;{" "}
-        <a href={`/users/${username}/following`}>{following} following</a>{" "}
+        <a href={`/@${username}/following`}>{following} following</a>{" "}
         &middot;{" "}
-        <a href={`/users/${username}/followers`}>
+        <a href={`/@${username}/followers`}>
           {followers === 1 ? "1 follower" : `${followers} followers`}
         </a>
         {" "}&middot;{" "}
@@ -267,7 +269,7 @@ export const Home: FC<HomeProps> = ({ user, posts, isAuthenticated = false }) =>
             .then(data => {
               const container = document.getElementById('posts-container');
               
-              data.posts.forEach(post => {
+              data.posts.forEach post => {
                 const postDiv = document.createElement('div');
                 postDiv.innerHTML = createPostHTML(post);
                 container.appendChild(postDiv.firstChild);
@@ -463,17 +465,16 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
     );
   };
 
-  // Helper to get the canonical post page URL
+  // Update getPostPageUrl to use /@:username/posts/:id for local posts
   const getPostPageUrl = (post: Post & Actor) => {
-    // Prefer local user posts: /users/:username/posts/:id
     if (post.user_id && post.handle) {
-      const username = post.handle.split('@')[1] || post.handle.split('@')[0];
-      const url = `/users/${username}/posts/${post.id}`;
-      return url;
+      // Extract username from handle (e.g., @username@domain)
+      const handle = post.handle.startsWith('@') ? post.handle.slice(1) : post.handle;
+      const username = handle.split('@')[0];
+      return `/@${username}/posts/${post.id}`;
     }
     // Fallback to post.url or post.uri
-    const fallbackUrl = post.url || post.uri;
-    return fallbackUrl;
+    return post.url || post.uri;
   };
 
   // Determine if we are already on the canonical post page
@@ -531,7 +532,7 @@ export const PostView: FC<PostViewProps> = ({ post, isAuthenticated = false }) =
         <footer>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <a href={post.url ?? post.uri} onClick={e => e.preventDefault()}>
+              <a href={getPostPageUrl(post)}>
                 <time datetime={timestamp.iso}>
                   {timestamp.display}
                 </time>
@@ -727,18 +728,20 @@ export const ActorLink: FC<ActorLinkProps> = ({ actor }) => {
   }
   
   if (isLocal) {
-    // Local user - extract username as the segment between first and second '@'
+    // Local user - use actor.username if present, else fallback to handle segment
     let username = '';
-    if (actor.handle) {
+    if (actor.username) {
+      username = actor.username;
+    } else if (actor.handle) {
       // Remove leading @ if present
       const handle = actor.handle.startsWith('@') ? actor.handle.slice(1) : actor.handle;
-      // Username is the part before the second @, e.g. ismailgunacar in ismailgunacar@gunac.ar
+      // Username is the part before the first @, e.g. ismailgunacar in ismailgunacar@gunac.ar
       const parts = handle.split('@');
-      username = parts.length > 1 ? parts[0] : handle;
+      username = parts[0];
     } else {
       username = 'user';
     }
-    href = `/users/${username}`;
+    href = `/@${username}`;
   } else {
     // Remote user - link to their external profile
     href = actor.url ?? actor.uri;
@@ -808,7 +811,7 @@ function replaceMentionsWithLinks(content: string): string {
       return `${space}<a href="${url}" class="u-url mention" rel="nofollow">@${username}@${domain}</a>`;
     } else {
       // Local mention
-      return `${space}<a href="/users/${username}" class="u-url mention">@${username}</a>`;
+      return `${space}<a href="/@${username}" class="u-url mention">@${username}</a>`;
     }
   });
 }

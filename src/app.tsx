@@ -21,6 +21,7 @@ import {
   ProfileEditForm,
   SetupForm,
 } from "./views.tsx";
+import userRoutes from "./routes/user.ts";
 
 const logger = getLogger("fongoblog");
 
@@ -569,416 +570,98 @@ app.post("/setup", async (c) => {
   }
 });
 
-// User profile page
-app.get("/users/:username", async (c) => {
-  await connectToDatabase();
-  const usersCollection = getUsersCollection();
-  const actorsCollection = getActorsCollection();
-  const postsCollection = getPostsCollection();
-  const followsCollection = getFollowsCollection();
-  const likesCollection = getLikesCollection();
-  const repostsCollection = getRepostsCollection();
+// Register Mastodon-style user and post routes
+app.route("/", userRoutes);
 
-  const username = c.req.param("username");
-  
-  const user = await usersCollection.findOne({ username });
-  if (!user) return c.notFound();
-
-  const actor = await actorsCollection.findOne({ user_id: user.id });
-  if (!actor) return c.notFound();
-
-  const userWithActor = { ...user, ...actor };
-
-  // Check if current visitor is authenticated
-  const currentUser = getCurrentUser(c);
-  const isAuthenticated = !!currentUser;
-
-  // Get follower/following counts
-  const followingCount = await followsCollection.countDocuments({ follower_id: actor.id });
-  const followersCount = await followsCollection.countDocuments({ following_id: actor.id });
-
-  // Aggregate posts with likes, reposts, and their actors
-  const posts = await postsCollection.aggregate([
-    { $match: { actor_id: actor.id, deleted: { $ne: true } } },
-    { $sort: { created: -1 } },
-    {
-      $lookup: {
-        from: "likes",
-        localField: "id",
-        foreignField: "post_id",
-        as: "likes"
-      }
-    },
-    {
-      $lookup: {
-        from: "actors",
-        localField: "likes.actor_id",
-        foreignField: "id",
-        as: "like_actors"
-      }
-    },
-    {
-      $lookup: {
-        from: "reposts",
-        localField: "id",
-        foreignField: "post_id",
-        as: "reposts"
-      }
-    },
-    {
-      $addFields: {
-        reposts: {
-          $map: {
-            input: "$reposts",
-            as: "r",
-            in: {
-              $mergeObjects: ["$$r", { actor_id: { $toInt: "$$r.actor_id" } }]
-            }
-          }
-        }
-      }
-    },
-    {
-      $lookup: {
-        from: "actors",
-        let: { repostActorIds: "$reposts.actor_id" },
-        pipeline: [
-          { $match: { $expr: { $in: ["$id", "$$repostActorIds"] } } }
-        ],
-        as: "repost_actors"
-      }
-    },
-    {
-      $lookup: {
-        from: "posts",
-        localField: "id",
-        foreignField: "reply_to",
-        as: "replies"
-      }
-    },
-    {
-      $addFields: {
-        likesCount: { $size: "$likes" },
-        repostsCount: { $size: "$reposts" },
-        isLikedByUser: isAuthenticated ? { $in: [actor.id, "$likes.actor_id"] } : false,
-        isRepostedByUser: isAuthenticated ? { $in: [actor.id, "$reposts.actor_id"] } : false
-      }
-    }
-  ]).toArray();
-
-  // Attach actor fields to each post for UI compatibility
-  const postsWithActor = posts.map(post => ({
-    ...post,
-    uri: actor.uri,
-    handle: actor.handle,
-    name: actor.name,
-    user_id: actor.user_id,
-    inbox_url: actor.inbox_url,
-    shared_inbox_url: actor.shared_inbox_url,
-    url: actor.url || post.url,
-  }));
-
-  // Remove _id from userWithActor for type compatibility
-  const { _id, ...userWithActorClean } = userWithActor;
-
-  // Remove _id from posts for type compatibility
-  const postsWithActorClean = postsWithActor.map(({ _id, ...rest }) => rest);
-
-  // Only show root posts (not replies) at the top level
-  const rootPosts = postsWithActorClean.filter(post => !post.reply_to);
-
-  return c.html(
-    <Layout user={userWithActorClean as User & Actor} isAuthenticated={isAuthenticated}>
-      <Profile
-        name={actor.name ?? user.username}
-        username={user.username}
-        handle={actor.handle}
-        bio={actor.summary}
-        following={followingCount}
-        followers={followersCount}
-      />
-      <PostList posts={rootPosts as (Post & Actor)[]} isAuthenticated={isAuthenticated} />
-    </Layout>
-  );
+// Logout route
+app.get("/logout", async (c) => {
+  destroySession(c);
+  // Redirect to login after logout
+  return c.redirect("/login");
 });
 
-// Create new post
-app.post("/users/:username/posts", requireAuth(), async (c) => {
-  await connectToDatabase();
-  const usersCollection = getUsersCollection();
-  const actorsCollection = getActorsCollection();
-  const postsCollection = getPostsCollection();
-
-  const username = c.req.param("username");
-  
-  const user = await usersCollection.findOne({ username });
-  if (!user) return c.redirect("/setup");
-
-  const actor = await actorsCollection.findOne({ user_id: user.id });
-  if (!actor) return c.redirect("/setup");
-
-  const form = await c.req.formData();
-  const content = form.get("content")?.toString();
-  
-  if (!content || content.trim() === "") {
-    return c.text("Content is required", 400);
-  }
-
-  const ctx = createCanonicalContext(c.req.raw, undefined);
-  
-  try {
-    const postId = await getNextSequence("posts");
-    const postUri = ctx.getObjectUri(Note, {
-      identifier: username,
-      id: postId.toString(),
-    }).href;
-
-    // Create post
-    const newPost = {
-      id: postId,
-      uri: postUri,
-      actor_id: actor.id,
-      content: stringifyEntities(content, { escapeOnly: true }),
-      url: postUri,
-      created: new Date()
-    };
-
-    await postsCollection.insertOne(newPost);
-
-    // Send Create(Note) activity to followers using robust federation logic
-    try {
-      await sendPostToFollowers(user.id, newPost as Post, actor as Actor);
-      logger.info("ActivityPub Create activity sent successfully", { postId });
-    } catch (activityError) {
-      logger.error("Failed to send ActivityPub Create activity", { 
-        activityError: activityError instanceof Error ? activityError.message : String(activityError),
-        postId,
-        username
-      });
-    }
-
-    return c.redirect(postUri);
-  } catch (error) {
-    logger.error("Failed to create post", { error });
-    return c.text("Failed to create post", 500);
-  }
-});
-
-// Individual post page
-app.get("/users/:username/posts/:id", async (c) => {
-  await connectToDatabase();
-  const usersCollection = getUsersCollection();
-  const actorsCollection = getActorsCollection();
-  const postsCollection = getPostsCollection();
-  const followsCollection = getFollowsCollection();
-
-  const username = c.req.param("username");
-  const postId = parseInt(c.req.param("id"));
-
-  const user = await usersCollection.findOne({ username });
-  if (!user) return c.notFound();
-
-  const actor = await actorsCollection.findOne({ user_id: user.id });
-  if (!actor) return c.notFound();
-
-  // Ensure we only get the post for this actor and id
-  const post = await postsCollection.findOne({ id: postId, actor_id: actor.id });
-  if (!post) return c.notFound();
-
-  // Get follower and following counts
-  const followersCount = await followsCollection.countDocuments({ following_id: actor.id });
-  const followingCount = await followsCollection.countDocuments({ follower_id: actor.id });
-
-  // Check if current visitor is authenticated
-  const currentUserSession = getCurrentUser(c);
-  const isAuthenticated = !!currentUserSession;
-
-  // If authenticated, fetch the user and actor for the session
-  let currentActorId: number | undefined = undefined;
-  if (currentUserSession && currentUserSession.username) {
-    const currentUserDb = await usersCollection.findOne({ username: currentUserSession.username });
-    if (currentUserDb) {
-      const currentActor = await actorsCollection.findOne({ user_id: currentUserDb.id });
-      if (currentActor) currentActorId = currentActor.id;
-    }
-  }
-
-  const likesCollection = getLikesCollection();
-  const repostsCollection = getRepostsCollection();
-
-  // Get likes and reposts for this post
-  const likes = await likesCollection.find({ post_id: post.id }).toArray();
-  const reposts = await repostsCollection.find({ post_id: post.id }).toArray();
-
-  // Get like and repost actors
-  const likeActorIds = likes.map(l => l.actor_id);
-  const repostActorIds = reposts.map(r => r.actor_id);
-  const like_actors = likeActorIds.length > 0 ? await actorsCollection.find({ id: { $in: likeActorIds } }).toArray() as Actor[] : [];
-  const repost_actors = repostActorIds.length > 0 ? await actorsCollection.find({ id: { $in: repostActorIds } }).toArray() as Actor[] : [];
-
-  // Compose the post object with all required fields, then remove _id
-  const postWithActor = {
-    ...actor,
-    ...user,
-    likesCount: likes.length,
-    repostsCount: reposts.length,
-    like_actors,
-    repost_actors,
-    isLikedByUser: currentActorId ? likes.some(l => l.actor_id === currentActorId) : false,
-    isRepostedByUser: currentActorId ? reposts.some(r => r.actor_id === currentActorId) : false,
-    ...post, // Spread post last so its fields (like created) are not overwritten
-  };
-  // Remove only the _id field if present
-  const { _id, ...postWithActorClean } = postWithActor;
-
-  // --- Fetch and attach replies with aggregation ---
-  const replies = await postsCollection.aggregate([
-    { $match: { reply_to: postId, deleted: { $ne: true } } },
-    { $sort: { created: 1 } },
-    {
-      $lookup: {
-        from: "actors",
-        localField: "actor_id",
-        foreignField: "id",
-        as: "actor"
-      }
-    },
-    {
-      $lookup: {
-        from: "likes",
-        localField: "id",
-        foreignField: "post_id",
-        as: "likes"
-      }
-    },
-    {
-      $lookup: {
-        from: "actors",
-        localField: "likes.actor_id",
-        foreignField: "id",
-        as: "like_actors"
-      }
-    },
-    {
-      $lookup: {
-        from: "reposts",
-        localField: "id",
-        foreignField: "post_id",
-        as: "reposts"
-      }
-    },
-    {
-      $addFields: {
-        reposts: {
-          $map: {
-            input: "$reposts",
-            as: "r",
-            in: {
-              $mergeObjects: ["$$r", { actor_id: { $toInt: "$$r.actor_id" } }]
-            }
-          }
-        }
-      }
-    },
-    {
-      $lookup: {
-        from: "actors",
-        let: { repostActorIds: "$reposts.actor_id" },
-        pipeline: [
-          { $match: { $expr: { $in: ["$id", "$$repostActorIds"] } } }
-        ],
-        as: "repost_actors"
-      }
-    },
-    {
-      $addFields: {
-        likesCount: { $size: "$likes" },
-        repostsCount: { $size: "$reposts" }
-      }
-    }
-  ]).toArray();
-  // Attach actor fields to each reply for UI compatibility
-  const repliesWithActor = replies.map(reply => {
-    const replyActor = reply.actor && reply.actor[0] ? reply.actor[0] : {};
-    const { _id, actor: _actorArr, ...rest } = reply;
-    return {
-      ...rest,
-      uri: replyActor.uri || rest.uri,
-      handle: replyActor.handle || rest.handle,
-      name: replyActor.name || rest.name,
-      user_id: replyActor.user_id || rest.user_id,
-      inbox_url: replyActor.inbox_url || rest.inbox_url,
-      shared_inbox_url: replyActor.shared_inbox_url || rest.shared_inbox_url,
-      url: replyActor.url || rest.url,
-      // Ensure required post fields are present
-      id: rest.id,
-      actor_id: rest.actor_id,
-      content: rest.content,
-      created: rest.created,
-      reply_to: rest.reply_to,
-      likesCount: rest.likesCount,
-      repostsCount: rest.repostsCount,
-      like_actors: rest.like_actors,
-      repost_actors: rest.repost_actors,
-      isLikedByUser: rest.isLikedByUser,
-      isRepostedByUser: rest.isRepostedByUser,
-    };
-  });
-  // Instead of assigning, create a new object with replies and all required fields
-  const postWithReplies = {
-    // --- Required Post fields ---
-    id: post.id,
-    uri: post.uri,
-    actor_id: post.actor_id,
-    content: post.content,
-    url: post.url,
-    created: post.created,
-    repost_of: post.repost_of,
-    is_repost: post.is_repost,
-    reply_to: post.reply_to,
-    deleted: post.deleted,
-    // --- Required Actor fields ---
-    user_id: actor.user_id,
-    handle: actor.handle,
-    name: actor.name,
-    summary: actor.summary,
-    inbox_url: actor.inbox_url,
-    shared_inbox_url: actor.shared_inbox_url,
-    // url already included above
-    // --- Extra fields for UI ---
-    likesCount: likes.length,
-    repostsCount: reposts.length,
-    like_actors,
-    repost_actors,
-    isLikedByUser: currentActorId ? likes.some(l => l.actor_id === currentActorId) : false,
-    isRepostedByUser: currentActorId ? reposts.some(r => r.actor_id === currentActorId) : false,
-    replies: repliesWithActor,
-  };
-
-  // Ensure the canonical URL matches the current request
-  const canonicalUrl = `/users/${username}/posts/${postId}`;
-  if (c.req.path !== canonicalUrl) {
-    return c.redirect(canonicalUrl);
-  }
-
+// Login page
+app.get("/login", redirectIfAuthenticated(), async (c) => {
+  // Always destroy any existing session before showing login form
+  destroySession(c);
   return c.html(
     <Layout>
-      <PostPage
-        name={actor.name ?? user.username}
-        username={user.username}
-        handle={actor.handle}
-        bio={actor.summary}
-        following={followingCount}
-        followers={followersCount}
-        post={postWithReplies}
-        isAuthenticated={isAuthenticated}
-      />
+      <LoginForm />
     </Layout>
   );
 });
 
-// --- Shared handler for profile page ---
-async function handleProfilePage(c: any, username: string) {
+// Login form submission
+app.post("/login", async (c) => {
+  await connectToDatabase();
+  const usersCollection = getUsersCollection();
+  const form = await c.req.formData();
+  const password = form.get("password")?.toString();
+  if (!password) {
+    return c.redirect("/login?error=missing");
+  }
+  // Always use the single user (id: 1)
+  const user = await usersCollection.findOne({ id: 1 });
+  if (!user) {
+    return c.redirect("/login?error=invalid");
+  }
+  const valid = await bcrypt.compare(password, user.password);
+  if (!valid) {
+    return c.redirect("/login?error=invalid");
+  }
+  // Build a User object for session
+  const userForSession = {
+    id: user.id,
+    username: user.username,
+    password: user.password,
+    created: user.created
+  };
+  createSession(c, userForSession);
+  // Redirect to home after login
+  return c.redirect("/");
+});
+
+// Profile edit page
+app.get("/profile/edit", requireAuth(), async (c) => {
+  await connectToDatabase();
+  const currentUser = getCurrentUser(c);
+  if (!currentUser) return c.redirect("/login");
+  const usersCollection = getUsersCollection();
+  const actorsCollection = getActorsCollection();
+  const user = await usersCollection.findOne({ id: currentUser.userId });
+  const actor = await actorsCollection.findOne({ user_id: currentUser.userId });
+  if (!user || !actor) return c.redirect("/login");
+
+  // Remove _id from user and actor for layout
+  const { _id: _userId2, ...userClean2 } = user as any;
+  const { _id: _actorId2, ...actorClean2 } = actor as any;
+  return c.html(
+    <Layout user={{ ...userClean2, ...actorClean2 } as User & Actor} isAuthenticated={true}>
+      <ProfileEditForm name={actor.name} bio={actor.summary} />
+    </Layout>
+  );
+});
+
+// Profile edit form submission
+app.post("/profile/edit", requireAuth(), async (c) => {
+  await connectToDatabase();
+  const currentUser = getCurrentUser(c);
+  if (!currentUser) return c.redirect("/login");
+  const usersCollection = getUsersCollection();
+  const actorsCollection = getActorsCollection();
+  const form = await c.req.formData();
+  const name = form.get("name")?.toString();
+  const summary = form.get("summary")?.toString();
+  await actorsCollection.updateOne(
+    { user_id: currentUser.userId },
+    { $set: { name, summary } }
+  );
+  // Redirect to the profile edit page after saving
+  return c.redirect("/profile/edit");
+});
+
+// --- Profile page for single user ---
+app.get("/profile", async (c) => {
   await connectToDatabase();
   const usersCollection = getUsersCollection();
   const actorsCollection = getActorsCollection();
@@ -987,9 +670,9 @@ async function handleProfilePage(c: any, username: string) {
   const likesCollection = getLikesCollection();
   const repostsCollection = getRepostsCollection();
 
-  const user = await usersCollection.findOne({ username });
+  const user = await usersCollection.findOne({ id: 1 });
   if (!user) return c.notFound();
-  const actor = await actorsCollection.findOne({ user_id: user.id });
+  const actor = await actorsCollection.findOne({ user_id: 1 });
   if (!actor) return c.notFound();
   const userWithActor = { ...user, ...actor };
   const currentUser = getCurrentUser(c);
@@ -1045,17 +728,11 @@ async function handleProfilePage(c: any, username: string) {
     url: actor.url || post.url,
   }));
 
-  // Remove _id from userWithActor for type compatibility
-  const { _id, ...userWithActorClean } = userWithActor;
-
-  // Remove _id from posts for type compatibility
-  const postsWithActorClean = postsWithActor.map(({ _id, ...rest }) => rest);
-
   // Only show root posts (not replies) at the top level
-  const rootPosts = postsWithActorClean.filter(post => !post.reply_to);
+  const rootPosts = postsWithActor.filter(post => !("reply_to" in post) || !post.reply_to);
 
   return c.html(
-    <Layout user={userWithActorClean as User & Actor} isAuthenticated={isAuthenticated}>
+    <Layout user={userWithActor as User & Actor} isAuthenticated={isAuthenticated}>
       <Profile
         name={actor.name ?? user.username}
         username={user.username}
@@ -1067,23 +744,25 @@ async function handleProfilePage(c: any, username: string) {
       <PostList posts={rootPosts as (Post & Actor)[]} isAuthenticated={isAuthenticated} />
     </Layout>
   );
-}
+});
 
-// --- Shared handler for post page ---
-async function handlePostPage(c: any, username: string, postId: number) {
+// --- Single-user post page ---
+app.get("/posts/:id", async (c) => {
   await connectToDatabase();
   const usersCollection = getUsersCollection();
   const actorsCollection = getActorsCollection();
   const postsCollection = getPostsCollection();
   const followsCollection = getFollowsCollection();
+  const likesCollection = getLikesCollection();
+  const repostsCollection = getRepostsCollection();
 
-  const user = await usersCollection.findOne({ username });
+  const user = await usersCollection.findOne({ id: 1 });
   if (!user) return c.notFound();
-
-  const actor = await actorsCollection.findOne({ user_id: user.id });
+  const actor = await actorsCollection.findOne({ user_id: 1 });
   if (!actor) return c.notFound();
 
   // Ensure we only get the post for this actor and id
+  const postId = parseInt(c.req.param("id"));
   const post = await postsCollection.findOne({ id: postId, actor_id: actor.id });
   if (!post) return c.notFound();
 
@@ -1094,31 +773,20 @@ async function handlePostPage(c: any, username: string, postId: number) {
   // Check if current visitor is authenticated
   const currentUserSession = getCurrentUser(c);
   const isAuthenticated = !!currentUserSession;
-
-  // If authenticated, fetch the user and actor for the session
   let currentActorId: number | undefined = undefined;
-  if (currentUserSession && currentUserSession.username) {
-    const currentUserDb = await usersCollection.findOne({ username: currentUserSession.username });
-    if (currentUserDb) {
-      const currentActor = await actorsCollection.findOne({ user_id: currentUserDb.id });
-      if (currentActor) currentActorId = currentActor.id;
-    }
+  if (currentUserSession) {
+    currentActorId = actor.id;
   }
-
-  const likesCollection = getLikesCollection();
-  const repostsCollection = getRepostsCollection();
 
   // Get likes and reposts for this post
   const likes = await likesCollection.find({ post_id: post.id }).toArray();
   const reposts = await repostsCollection.find({ post_id: post.id }).toArray();
-
-  // Get like and repost actors
   const likeActorIds = likes.map(l => l.actor_id);
   const repostActorIds = reposts.map(r => r.actor_id);
   const like_actors = likeActorIds.length > 0 ? await actorsCollection.find({ id: { $in: likeActorIds } }).toArray() as Actor[] : [];
   const repost_actors = repostActorIds.length > 0 ? await actorsCollection.find({ id: { $in: repostActorIds } }).toArray() as Actor[] : [];
 
-  // Compose the post object with all required fields, then remove _id
+  // Compose the post object with all required fields
   const postWithActor = {
     ...actor,
     ...user,
@@ -1128,10 +796,8 @@ async function handlePostPage(c: any, username: string, postId: number) {
     repost_actors,
     isLikedByUser: currentActorId ? likes.some(l => l.actor_id === currentActorId) : false,
     isRepostedByUser: currentActorId ? reposts.some(r => r.actor_id === currentActorId) : false,
-    ...post, // Spread post last so its fields (like created) are not overwritten
+    ...post,
   };
-  // Remove only the _id field if present
-  const { _id, ...postWithActorClean } = postWithActor;
 
   // --- Fetch and attach replies with aggregation ---
   const replies = await postsCollection.aggregate([
@@ -1212,7 +878,6 @@ async function handlePostPage(c: any, username: string, postId: number) {
       inbox_url: replyActor.inbox_url || rest.inbox_url,
       shared_inbox_url: replyActor.shared_inbox_url || rest.shared_inbox_url,
       url: replyActor.url || rest.url,
-      // Ensure required post fields are present
       id: rest.id,
       actor_id: rest.actor_id,
       content: rest.content,
@@ -1226,9 +891,7 @@ async function handlePostPage(c: any, username: string, postId: number) {
       isRepostedByUser: rest.isRepostedByUser,
     };
   });
-  // Instead of assigning, create a new object with replies and all required fields
   const postWithReplies = {
-    // --- Required Post fields ---
     id: post.id,
     uri: post.uri,
     actor_id: post.actor_id,
@@ -1239,15 +902,12 @@ async function handlePostPage(c: any, username: string, postId: number) {
     is_repost: post.is_repost,
     reply_to: post.reply_to,
     deleted: post.deleted,
-    // --- Required Actor fields ---
     user_id: actor.user_id,
     handle: actor.handle,
     name: actor.name,
     summary: actor.summary,
     inbox_url: actor.inbox_url,
     shared_inbox_url: actor.shared_inbox_url,
-    // url already included above
-    // --- Extra fields for UI ---
     likesCount: likes.length,
     repostsCount: reposts.length,
     like_actors,
@@ -1256,12 +916,6 @@ async function handlePostPage(c: any, username: string, postId: number) {
     isRepostedByUser: currentActorId ? reposts.some(r => r.actor_id === currentActorId) : false,
     replies: repliesWithActor,
   };
-
-  // Ensure the canonical URL matches the current request
-  const canonicalUrl = `/users/${username}/posts/${postId}`;
-  if (c.req.path !== canonicalUrl) {
-    return c.redirect(canonicalUrl);
-  }
 
   return c.html(
     <Layout>
@@ -1277,62 +931,19 @@ async function handlePostPage(c: any, username: string, postId: number) {
       />
     </Layout>
   );
-}
+});
 
-// --- Helper to serve ActivityPub JSON for a post ---
-async function serveActivityPubPost(c: any) {
-  await connectToDatabase();
-  const usersCollection = getUsersCollection();
-  const actorsCollection = getActorsCollection();
-  const postsCollection = getPostsCollection();
-  const username = c.req.param("username");
-  const postId = parseInt(c.req.param("id"));
-  const user = await usersCollection.findOne({ username });
-  if (!user) return c.notFound();
-  const actor = await actorsCollection.findOne({ user_id: user.id });
-  if (!actor) return c.notFound();
-  const post = await postsCollection.findOne({ id: postId, actor_id: actor.id });
-  if (!post) return c.notFound();
-  const domain = process.env.DOMAIN || "gunac.ar";
-  const canonicalUrl = `https://${domain}/${username}/posts/${postId}`;
-  const note = {
-    '@context': [
-      'https://www.w3.org/ns/activitystreams',
-      'https://w3id.org/security/v1'
-    ],
-    id: canonicalUrl,
-    type: 'Note',
-    attributedTo: actor.uri,
-    content: post.content,
-    published: post.created instanceof Date ? post.created.toISOString() : new Date(post.created).toISOString(),
-    url: canonicalUrl,
-    ...(post.reply_to ? { inReplyTo: post.reply_to && typeof post.reply_to === 'number' ? `https://${domain}/${username}/posts/${post.reply_to}` : post.reply_to } : {}),
-    to: ['https://www.w3.org/ns/activitystreams#Public'],
-  };
-  return c.json(note);
-}
-
-// --- Register both /:username and /user/:username routes ---
-app.get("/:username", async (c) => {
-  return handleProfilePage(c, c.req.param("username"));
+// --- ActivityPub JSON endpoints for federation (keep username in path for compatibility) ---
+app.get("/users/:username", async (c) => {
+  // Always serve ActivityPub JSON for federation
+  // (do not render HTML or redirect)
+  const { serveActivityPubProfile } = await import("./controllers/user.tsx");
+  return serveActivityPubProfile(c);
 });
-app.get("/user/:username", async (c) => {
-  return handleProfilePage(c, c.req.param("username"));
-});
-app.get("/:username/posts/:id", async (c) => {
-  return handlePostPage(c, c.req.param("username"), parseInt(c.req.param("id")));
-});
-app.get("/user/:username/posts/:id", async (c) => {
-  return handlePostPage(c, c.req.param("username"), parseInt(c.req.param("id")));
-});
-// ActivityPub JSON endpoints
-app.get("/:username/posts/:id.json", async (c) => {
+app.get("/users/:username/posts/:id.json", async (c) => {
   c.req.raw.headers.set("Accept", "application/activity+json");
-  return await serveActivityPubPost(c);
-});
-app.get("/user/:username/posts/:id.json", async (c) => {
-  c.req.raw.headers.set("Accept", "application/activity+json");
-  return await serveActivityPubPost(c);
+  const { serveActivityPubPost } = await import("./controllers/user.tsx");
+  return serveActivityPubPost(c);
 });
 
 // Like a post
@@ -1615,7 +1226,7 @@ app.get("/.well-known/webfinger", async (c) => {
       {
         rel: "http://webfinger.net/rel/profile-page",
         type: "text/html",
-        href: actor.url || actor.uri,
+        href: actor.url,
       },
     ],
   };

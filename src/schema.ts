@@ -20,6 +20,7 @@ export interface Actor {
   shared_inbox_url: string | null;
   url: string | null;
   created: Date;
+  username?: string; // Optional: for local user pretty URLs
 }
 
 export interface Key {
