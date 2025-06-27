@@ -377,7 +377,7 @@ export const PostList: FC<PostListProps> = ({ posts, isAuthenticated = false }) 
         <PostView post={post} isAuthenticated={isAuthenticated} />
         {/* Render replies if present */}
         {Array.isArray(post.replies) && post.replies.length > 0 && (
-          <div style={{ marginLeft: '2rem', borderLeft: '1px solid #eee', paddingLeft: '1rem' }}>
+          <div style={{ marginLeft: '2rem', paddingLeft: '1rem' }}>
             <PostList posts={post.replies} isAuthenticated={isAuthenticated} />
           </div>
         )}
@@ -647,7 +647,7 @@ export const PostPage: FC<PostPageProps> = (props) => (
     <PostView post={props.post} isAuthenticated={props.isAuthenticated} />
     {/* Show replies to this post, if any */}
     {Array.isArray(props.post.replies) && props.post.replies.length > 0 && (
-      <section style={{ marginLeft: '2rem', borderLeft: '2px solid #eee', paddingLeft: '1rem', marginTop: '2rem' }}>
+      <section style={{ marginLeft: '2rem', paddingLeft: '1rem', marginTop: '2rem' }}>
         <h3>Replies</h3>
         <PostList posts={props.post.replies} isAuthenticated={props.isAuthenticated} />
       </section>
