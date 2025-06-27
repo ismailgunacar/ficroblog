@@ -129,7 +129,7 @@ async function persistActor(actor: APActor): Promise<Actor | null> {
 
 // Actor dispatcher
 federation
-  .setActorDispatcher("/{identifier}", async (ctx, identifier) => {
+  .setActorDispatcher("/users/{identifier}", async (ctx, identifier) => {
     await connectToDatabase();
     const usersCollection = getUsersCollection();
     const actorsCollection = getActorsCollection();
@@ -143,7 +143,7 @@ federation
     const keys = await ctx.getActorKeyPairs(identifier);
     // Always use canonical HTTPS domain for all URLs
     const domain = getCanonicalDomain();
-    const actorUrl = `${domain}/${identifier}`;
+    const actorUrl = `${domain}/users/${identifier}`;
     return new Person({
       id: ctx.getActorUri(identifier),
       preferredUsername: identifier,
@@ -209,7 +209,7 @@ federation
 // Note object dispatcher
 federation.setObjectDispatcher(
   Note,
-  "/{identifier}/posts/{id}",
+  "/users/{identifier}/posts/{id}",
   async (ctx, values) => {
     await connectToDatabase();
     const usersCollection = getUsersCollection();
@@ -255,7 +255,7 @@ federation.setObjectDispatcher(
 // Followers collection dispatcher
 federation
   .setFollowersDispatcher(
-    "/{identifier}/followers",
+    "/users/{identifier}/followers",
     async (ctx, identifier) => {
       await connectToDatabase();
       const usersCollection = getUsersCollection();
@@ -330,7 +330,7 @@ federation
 
 // Outbox dispatcher
 federation
-  .setOutboxDispatcher("/{identifier}/outbox", async (ctx, identifier, cursor) => {
+  .setOutboxDispatcher("/users/{identifier}/outbox", async (ctx, identifier, cursor) => {
     await connectToDatabase();
     const usersCollection = getUsersCollection();
     const actorsCollection = getActorsCollection();
@@ -391,7 +391,7 @@ federation
 
 // Inbox listeners
 federation
-  .setInboxListeners("/{identifier}/inbox", "/inbox")
+  .setInboxListeners("/users/{identifier}/inbox", "/inbox")
   .on(Follow, async (ctx, follow) => {
     if (follow.objectId == null) {
       logger.debug("Follow object does not have an object", { follow });
