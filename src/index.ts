@@ -2622,10 +2622,32 @@ app.onError((err, c) => {
 // --- Mount Fedify ActivityPub routes ---
 mountFedifyRoutes(app, client);
 
-// --- Start the server ---
-// serve({ fetch: app.fetch, port: 8000 }); // REMOVE this line from here
-
-// ... existing code ...
+// Simple health check for federation
+app.get('/federation-health', async (c) => {
+  const domain = getDomainFromRequest(c);
+  const host = c.req.header('host');
+  const userAgent = c.req.header('user-agent');
+  
+  console.log('🏥 Federation health check:', {
+    domain,
+    host,
+    userAgent,
+    url: c.req.url,
+    method: c.req.method
+  });
+  
+  return c.json({
+    status: 'healthy',
+    domain,
+    host,
+    timestamp: new Date().toISOString(),
+    endpoints: {
+      webfinger: `https://${domain}/.well-known/webfinger?resource=acct:ismail@${domain}`,
+      actor: `https://${domain}/users/ismail`,
+      nodeInfo: `https://${domain}/.well-known/nodeinfo/2.0`
+    }
+  });
+});
 
 // Add this as the very last line of the file:
 serve({ fetch: app.fetch, port: 8000 });
