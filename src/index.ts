@@ -367,6 +367,53 @@ window.toggleRepost = async function(postId) {
     console.error('Error toggling repost:', error);
   }
 };
+
+// Remote follow form handler
+window.handleRemoteFollow = async function(event) {
+  event.preventDefault();
+  
+  const form = event.target;
+  const formData = new FormData(form);
+  const remoteUser = formData.get('remoteUser');
+  const msgDiv = document.getElementById('remote-follow-msg');
+  
+  if (!remoteUser || !remoteUser.toString().includes('@')) {
+    if (msgDiv) {
+      msgDiv.innerHTML = '<small style="color: #c00;">Please enter a valid username@domain format</small>';
+    }
+    return;
+  }
+  
+  try {
+    const response = await fetch('/remote-follow', {
+      method: 'POST',
+      body: formData
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      if (msgDiv) {
+        msgDiv.innerHTML = '<small style="color: #090;">✅ ' + data.message + '</small>';
+      }
+      // Clear the form
+      form.reset();
+      // Reload the page to show new remote posts
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
+    } else {
+      if (msgDiv) {
+        msgDiv.innerHTML = '<small style="color: #c00;">❌ ' + data.error + '</small>';
+      }
+    }
+  } catch (error) {
+    console.error('Remote follow error:', error);
+    if (msgDiv) {
+      msgDiv.innerHTML = '<small style="color: #c00;">❌ Network error. Please try again.</small>';
+    }
+  }
+};
 `;
 
 // Move renderHome above all usages
@@ -705,13 +752,38 @@ function renderHome({
         <input name="content" placeholder="What's on your mind?" required class="input" />
         <button type="submit" class="primary">Post</button>
       </form>
+      
+      <div class="remote-follow-card" style="margin-bottom: 2em; padding: 1.5em; border: 1px solid var(--muted-border-color); border-radius: 12px; background: var(--card-background-color, #fff); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);">
+        <h3 style="margin-top: 0; margin-bottom: 0.5em; font-size: 1.1em;">🌐 Follow Remote User</h3>
+        <p style="margin-bottom: 1em; color: var(--muted-color); font-size: 0.9em;">Follow someone from another ActivityPub server (e.g., username@mastodon.social)</p>
+        <form method="post" action="/remote-follow" class="remote-follow-form" onsubmit="handleRemoteFollow(event)">
+
+            <input name="remoteUser" placeholder="username@domain" required class="input" style="width: 100%; font-size: 0.9em;" />
+            <small style="color: var(--muted-color); font-size: 0.8em;">Enter the full username including domain</small>
+
+            <button type="submit" class="primary" style="padding: 0.5rem 1rem; font-size: 0.9em; white-space: nowrap;">Follow</button>
+         
+        </form>
+        <div id="remote-follow-msg" style="margin-top: 0.5em;"></div>
+      </div>
       ` : ''}
       <div class="timeline-container">
         <ul class="timeline-list">
-          ${allPosts.map(post => `
-            <li class="card">
+          ${allPosts.map(post => {
+            const postUser = userMap.get(post.userId.toString());
+            const isRemote = (post as any).remote;
+            const remoteDomain = isRemote ? post.userId.toString().split('@')[1] : null;
+            
+            return `
+            <li class="card" ${isRemote ? 'style="border-left: 4px solid #007bff; background: #f8f9fa;"' : ''}>
               <header>
-                <a href="/@${userMap.get(post.userId.toString())?.username ?? 'unknown'}" class="post-author">${userMap.get(post.userId.toString())?.name ?? 'Unknown'} <span style="color: var(--muted-color); font-weight: normal;">(@${userMap.get(post.userId.toString())?.username ?? 'unknown'}@${domain})</span></a>
+                <a href="${isRemote ? postUser?.bio?.includes('Remote user from') ? '#' : `/@${postUser?.username ?? 'unknown'}` : `/@${postUser?.username ?? 'unknown'}`}" class="post-author">
+                  ${postUser?.name ?? 'Unknown'} 
+                  <span style="color: var(--muted-color); font-weight: normal;">
+                    (@${postUser?.username ?? 'unknown'}${isRemote ? `@${remoteDomain}` : `@${domain}`})
+                  </span>
+                  ${isRemote ? '<span style="color: #007bff; font-size: 0.8em; margin-left: 0.5em;">🌐 Remote</span>' : ''}
+                </a>
               </header>
               <p>${post.content}</p>
               <footer class="post-meta">
@@ -728,10 +800,13 @@ function renderHome({
                 </div>
                 <div style="display: flex; align-items: center; gap: 0.5em; margin-top: 0.5em;">
                   <small>${post.createdAt ? new Date(post.createdAt).toLocaleDateString() : ''}</small>
-                  <a href="/post/${post._id}" class="permalink-link">🔗 Permalink</a>
+                  ${isRemote ? 
+                    `<small style="color: #007bff;">🌐 From ${remoteDomain}</small>` : 
+                    `<a href="/post/${post._id}" class="permalink-link">🔗 Permalink</a>`
+                  }
                 </div>
               </footer>
-              ${loggedIn ? `
+              ${loggedIn && !isRemote ? `
               <div id="reply-form-${post._id}" style="display: none; margin-top: 1em; padding-top: 1em; border-top: 1px solid var(--muted-border-color);">
                 <form method="post" action="/reply" class="reply-form">
                   <input type="hidden" name="replyTo" value="${post._id}" />
@@ -744,7 +819,7 @@ function renderHome({
               </div>
               ` : ''}
             </li>
-          `).join('')}
+          `}).join('')}
         </ul>
       </div>
     </body>
@@ -1686,25 +1761,6 @@ app.get('/', async (c) => {
   const anyUser = await users.findOne({});
   if (!anyUser) return c.redirect('/setup');
   
-  const allPosts = await posts.find({}).sort({ createdAt: -1 }).limit(20).toArray();
-  // Fetch usernames for posts
-  const userMap = new Map<string, User>();
-  for (const post of allPosts) {
-    const userIdStr = post.userId.toString();
-    if (post.userId && !userMap.has(userIdStr)) {
-      let user: User | null = null;
-      try {
-        // Handle both ObjectId and string types
-        const userId = typeof post.userId === 'string' ? new ObjectId(post.userId) : post.userId;
-        user = await users.findOne({ _id: userId });
-      } catch (e) {
-        // ignore invalid ObjectId
-      }
-      if (user) {
-        userMap.set(userIdStr, user);
-      }
-    }
-  }
   // Check session via cookie
   const session = getCookie(c, 'session');
   let loggedIn = false;
@@ -1715,6 +1771,116 @@ app.get('/', async (c) => {
   } else {
     user = await users.findOne({}); // fallback for stats if not logged in
   }
+  
+  // Get local posts
+  let allPosts = await posts.find({}).sort({ createdAt: -1 }).limit(20).toArray();
+  
+  // If logged in, also fetch remote posts from followed users
+  if (loggedIn && user) {
+    const remoteFollows = await follows.find({ 
+      followerId: user._id?.toString(), 
+      remote: true 
+    }).toArray();
+    
+    // Fetch remote posts for each followed remote user
+    for (const remoteFollow of remoteFollows) {
+      try {
+        if (remoteFollow.followingUrl) {
+          // Get the outbox URL from the actor profile
+          const actorResponse = await fetch(remoteFollow.followingUrl, {
+            headers: {
+              'Accept': 'application/activity+json'
+            }
+          });
+          
+          if (actorResponse.ok) {
+            const actor = await actorResponse.json();
+            const outboxUrl = actor.outbox;
+            
+            if (outboxUrl) {
+              // Fetch recent posts from the outbox
+              const outboxResponse = await fetch(outboxUrl, {
+                headers: {
+                  'Accept': 'application/activity+json'
+                }
+              });
+              
+              if (outboxResponse.ok) {
+                const outbox = await outboxResponse.json();
+                
+                // Process Create activities that contain Note objects
+                if (outbox.orderedItems) {
+                  for (const activity of outbox.orderedItems.slice(0, 5)) { // Limit to 5 recent posts
+                    if (activity.type === 'Create' && activity.object && activity.object.type === 'Note') {
+                      const remotePost = {
+                        _id: new ObjectId(), // Generate a local ID
+                        userId: remoteFollow.followingId, // Use the remote user ID
+                        content: activity.object.content || '',
+                        createdAt: new Date(activity.published || activity.object.published || Date.now()),
+                        updatedAt: new Date(activity.updated || activity.object.updated || Date.now()),
+                        federated: true,
+                        federatedFrom: activity.actor,
+                        remote: true,
+                        remotePostId: activity.object.id,
+                        remoteActor: activity.actor
+                      };
+                      
+                      allPosts.push(remotePost);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Error fetching remote posts for ${remoteFollow.followingId}:`, error);
+      }
+    }
+    
+    // Sort all posts by creation date (newest first)
+    allPosts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    
+    // Limit to 20 posts total
+    allPosts = allPosts.slice(0, 20);
+  }
+  
+  // Fetch usernames for posts
+  const userMap = new Map<string, User>();
+  for (const post of allPosts) {
+    const userIdStr = post.userId.toString();
+    if (post.userId && !userMap.has(userIdStr)) {
+      // Check if this is a remote user
+      if (post.remote) {
+        // For remote users, create a virtual user object
+        const remoteUsername = post.userId.toString();
+        userMap.set(userIdStr, {
+          _id: remoteUsername,
+          username: remoteUsername.split('@')[0] || remoteUsername,
+          name: remoteUsername.split('@')[0] || remoteUsername,
+          bio: `Remote user from ${remoteUsername.split('@')[1] || 'unknown domain'}`,
+          avatarUrl: '',
+          headerUrl: '',
+          passwordHash: '',
+          createdAt: new Date()
+        });
+      } else {
+        // Local user
+        let user: User | null = null;
+        try {
+          // Handle both ObjectId and string types
+          const userId = typeof post.userId === 'string' ? new ObjectId(post.userId) : post.userId;
+          user = await users.findOne({ _id: userId });
+        } catch (e) {
+          // ignore invalid ObjectId
+        }
+        if (user) {
+          userMap.set(userIdStr, user);
+        }
+      }
+    }
+  }
+  
   // Stats
   let postCount = 0;
   let followerCount = 0;
@@ -1724,6 +1890,7 @@ app.get('/', async (c) => {
     followerCount = await follows.countDocuments({ followingId: user._id.toString() });
     followingCount = await follows.countDocuments({ followerId: user._id.toString() });
   }
+  
   // Detect if JSON is expected
   const wantsJson = c.req.header('x-requested-with') === 'fetch' || c.req.header('accept')?.includes('application/json') || c.req.header('content-type')?.includes('application/json');
   const domain = getDomainFromRequest(c);
@@ -2689,4 +2856,126 @@ app.get('/federation', async (c) => {
   `;
   
   return c.html(html);
+});
+
+// Remote follow handler
+app.post('/remote-follow', async (c) => {
+  await client.connect();
+  const db = client.db();
+  const users = db.collection<User>('users');
+  
+  const session = getCookie(c, 'session');
+  if (!session || session.length !== 24 || !/^[a-fA-F0-9]+$/.test(session)) {
+    return c.json({ success: false, error: 'Not logged in' });
+  }
+  
+  const currentUser = await users.findOne({ _id: new ObjectId(session) });
+  if (!currentUser) {
+    return c.json({ success: false, error: 'User not found' });
+  }
+  
+  const body = await c.req.parseBody();
+  const remoteUser = typeof body['remoteUser'] === 'string' ? body['remoteUser'] : '';
+  
+  if (!remoteUser || !remoteUser.includes('@')) {
+    return c.json({ success: false, error: 'Invalid remote user format. Use username@domain' });
+  }
+  
+  const [username, domain] = remoteUser.split('@');
+  if (!username || !domain) {
+    return c.json({ success: false, error: 'Invalid remote user format. Use username@domain' });
+  }
+  
+  try {
+    // First, try to discover the remote user via WebFinger
+    const webfingerUrl = `https://${domain}/.well-known/webfinger?resource=acct:${username}@${domain}`;
+    const webfingerResponse = await fetch(webfingerUrl);
+    
+    if (!webfingerResponse.ok) {
+      return c.json({ success: false, error: `Could not find user ${remoteUser} on ${domain}` });
+    }
+    
+    const webfinger = await webfingerResponse.json();
+    
+    // Find the actor URL from WebFinger links
+    const actorLink = webfinger.links?.find((link: any) => 
+      link.rel === 'self' && link.type === 'application/activity+json'
+    );
+    
+    if (!actorLink?.href) {
+      return c.json({ success: false, error: `Could not find actor URL for ${remoteUser}` });
+    }
+    
+    const actorUrl = actorLink.href;
+    
+    // Get the actor profile to find their inbox
+    const actorResponse = await fetch(actorUrl, {
+      headers: {
+        'Accept': 'application/activity+json'
+      }
+    });
+    
+    if (!actorResponse.ok) {
+      return c.json({ success: false, error: `Could not fetch profile for ${remoteUser}` });
+    }
+    
+    const actor = await actorResponse.json();
+    const inboxUrl = actor.inbox;
+    
+    if (!inboxUrl) {
+      return c.json({ success: false, error: `Could not find inbox for ${remoteUser}` });
+    }
+    
+    // Create and send the Follow activity
+    const followActivity = {
+      "@context": "https://www.w3.org/ns/activitystreams",
+      "type": "Follow",
+      "actor": `https://${getDomainFromRequest(c)}/users/${currentUser.username}`,
+      "object": actorUrl,
+      "to": [actorUrl],
+      "cc": ["https://www.w3.org/ns/activitystreams#Public"]
+    };
+    
+    // Send the Follow activity to the remote user's inbox
+    const followResponse = await fetch(inboxUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/activity+json',
+        'Accept': 'application/activity+json'
+      },
+      body: JSON.stringify(followActivity)
+    });
+    
+    if (followResponse.ok) {
+      // Store the remote follow relationship in our database
+      const follows = db.collection('follows');
+      await follows.insertOne({
+        followerId: currentUser._id?.toString(),
+        followingId: `${username}@${domain}`,
+        followingUrl: actorUrl,
+        followingInbox: inboxUrl,
+        remote: true,
+        createdAt: new Date()
+      });
+      
+      return c.json({ 
+        success: true, 
+        message: `Successfully sent follow request to ${remoteUser}`,
+        actorUrl,
+        inboxUrl
+      });
+    } else {
+      return c.json({ 
+        success: false, 
+        error: `Failed to send follow request to ${remoteUser}. Status: ${followResponse.status}` 
+      });
+    }
+    
+  } catch (error) {
+    console.error('Error following remote user:', error);
+    return c.json({ 
+      success: false, 
+      error: `Error following ${remoteUser}: ${error instanceof Error ? error.message : 'Unknown error'}` 
+    });
+  }
 });
