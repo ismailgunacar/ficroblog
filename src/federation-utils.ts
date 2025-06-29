@@ -546,13 +546,19 @@ export async function sendFollowActivity(followerId: string, followingUsername: 
   console.log(`📝 Follow activity:`, followActivity);
 
   try {
-    // Send the follow activity to the remote user's inbox
-    const response = await signRequest(
-      follow.followingInboxUrl,
-      'POST',
-      JSON.stringify(followActivity),
-      followerId
-    );
+    // Send unsigned request for testing
+    console.log(`📤 Sending unsigned follow activity to: ${follow.followingInboxUrl}`);
+    
+    const response = await fetch(follow.followingInboxUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/activity+json',
+        'Accept': 'application/activity+json',
+        'User-Agent': 'fongoblog2/1.0 (ActivityPub)'
+      },
+      body: JSON.stringify(followActivity),
+      duplex: 'half'
+    });
 
     console.log(`📤 Follow activity response: ${response.status} ${response.statusText}`);
 
