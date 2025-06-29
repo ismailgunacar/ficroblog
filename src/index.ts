@@ -2727,8 +2727,8 @@ app.post('/remote-follow', async (c) => {
     // Check if already following this remote user
     const follows = db.collection('follows');
     const existingFollow = await follows.findOne({
-      followerId: currentUser._id.toString(),
-      followingId: `${username}@${domain}`
+      follower_id: currentUser._id.toString(),
+      following_id: `${username}@${domain}`
     });
     
     if (existingFollow) {
@@ -2740,8 +2740,8 @@ app.post('/remote-follow', async (c) => {
     
     // Store the remote follow relationship
     const followData = {
-      followerId: currentUser._id.toString(),
-      followingId: `${username}@${domain}`,
+      follower_id: currentUser._id.toString(),
+      following_id: `${username}@${domain}`,
       followingUrl: actorUrl,
       followingInbox: inboxUrl,
       remote: true,
@@ -2760,13 +2760,13 @@ app.post('/remote-follow', async (c) => {
     });
     
     // Double-check that we have valid data before inserting
-    if (!followData.followerId || followData.followerId === 'null' || followData.followerId === 'undefined') {
-      console.error('❌ Invalid followerId detected:', followData.followerId);
+    if (!followData.follower_id || followData.follower_id === 'null' || followData.follower_id === 'undefined') {
+      console.error('❌ Invalid follower_id detected:', followData.follower_id);
       return c.json({ success: false, error: 'Invalid user data - missing follower ID' });
     }
     
-    if (!followData.followingId || followData.followingId === 'null' || followData.followingId === 'undefined') {
-      console.error('❌ Invalid followingId detected:', followData.followingId);
+    if (!followData.following_id || followData.following_id === 'null' || followData.following_id === 'undefined') {
+      console.error('❌ Invalid following_id detected:', followData.following_id);
       return c.json({ success: false, error: 'Invalid remote user data' });
     }
     
@@ -2828,8 +2828,8 @@ app.post('/remote-unfollow', async (c) => {
     // Remove the remote follow relationship
     const follows = db.collection('follows');
     const result = await follows.deleteOne({
-      followerId: currentUser._id.toString(),
-      followingId: `${username}@${domain}`
+      follower_id: currentUser._id.toString(),
+      following_id: `${username}@${domain}`
     });
     
     if (result.deletedCount > 0) {
