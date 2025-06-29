@@ -601,25 +601,61 @@ export function mountFedifyRoutes(app: Hono, mongoClient: MongoClient) {
         if (isActivityPubRoute) {
           console.log(`🔗 Handling ActivityPub route: ${path}`);
           
-          // Try to use the federation instance directly
-          if (typeof federation.handle === 'function') {
-            const result = await federation.handle(c.req.raw);
-            if (result) {
-              console.log(`✅ Fedify handled: ${path}`);
+          // Try multiple approaches to handle the request
+          
+          // Method 1: Try federation.fetch
+          if (typeof federation.fetch === 'function') {
+            console.log('🔍 Trying federation.fetch...');
+            const result = await federation.fetch(c.req.raw);
+            if (result && result.status !== 404) {
+              console.log(`✅ Federation.fetch handled: ${path}`);
               return new Response(result.body, result);
             }
           }
           
-          // Fallback: try using the router
+          // Method 2: Try federation.handle
+          if (typeof federation.handle === 'function') {
+            console.log('🔍 Trying federation.handle...');
+            const result = await federation.handle(c.req.raw);
+            if (result) {
+              console.log(`✅ Federation.handle handled: ${path}`);
+              return new Response(result.body, result);
+            }
+          }
+          
+          // Method 3: Try federation.router.handle
           if (federation.router && typeof federation.router.handle === 'function') {
+            console.log('🔍 Trying federation.router.handle...');
             const result = await federation.router.handle(c.req.raw);
             if (result) {
-              console.log(`✅ Router handled: ${path}`);
+              console.log(`✅ Router.handle handled: ${path}`);
+              return new Response(result.body, result);
+            }
+          }
+          
+          // Method 4: Try federation.router.fetch
+          if (federation.router && typeof federation.router.fetch === 'function') {
+            console.log('🔍 Trying federation.router.fetch...');
+            const result = await federation.router.fetch(c.req.raw);
+            if (result && result.status !== 404) {
+              console.log(`✅ Router.fetch handled: ${path}`);
+              return new Response(result.body, result);
+            }
+          }
+          
+          // Method 5: Try using the federation as a Hono app
+          if (typeof federation.fetch === 'function') {
+            console.log('🔍 Trying federation as Hono app...');
+            const result = await federation.fetch(c.req.raw);
+            if (result && result.status !== 404) {
+              console.log(`✅ Federation as Hono handled: ${path}`);
               return new Response(result.body, result);
             }
           }
           
           console.log(`❌ No handler found for: ${path}`);
+          console.log('🔍 Available methods on federation:', Object.getOwnPropertyNames(Object.getPrototypeOf(federation)));
+          console.log('🔍 Available methods on router:', federation.router ? Object.getOwnPropertyNames(Object.getPrototypeOf(federation.router)) : 'No router');
         }
       } catch (error) {
         console.error(`❌ Error handling ActivityPub route:`, error);
