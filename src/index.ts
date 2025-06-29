@@ -2666,6 +2666,12 @@ app.post('/remote-follow', async (c) => {
     return c.json({ success: false, error: 'User not found' });
   }
   
+  // Validate that currentUser has a valid _id
+  if (!currentUser._id) {
+    console.error('Current user has no _id:', currentUser);
+    return c.json({ success: false, error: 'Invalid user data' });
+  }
+  
   const body = await c.req.parseBody();
   const remoteUser = typeof body['remoteUser'] === 'string' ? body['remoteUser'] : '';
   
@@ -2718,17 +2724,33 @@ app.post('/remote-follow', async (c) => {
       return c.json({ success: false, error: `Could not find inbox for ${remoteUser}` });
     }
     
-    // For now, just store the remote follow relationship without sending the activity
-    // This allows us to test the UI and database functionality
+    // Check if already following this remote user
     const follows = db.collection('follows');
-    await follows.insertOne({
-      followerId: currentUser._id?.toString(),
+    const existingFollow = await follows.findOne({
+      followerId: currentUser._id.toString(),
+      followingId: `${username}@${domain}`
+    });
+    
+    if (existingFollow) {
+      return c.json({ 
+        success: false, 
+        error: `Already following ${remoteUser}` 
+      });
+    }
+    
+    // Store the remote follow relationship
+    const followData = {
+      followerId: currentUser._id.toString(),
       followingId: `${username}@${domain}`,
       followingUrl: actorUrl,
       followingInbox: inboxUrl,
       remote: true,
       createdAt: new Date()
-    });
+    };
+    
+    console.log('📝 Inserting remote follow:', followData);
+    
+    await follows.insertOne(followData);
     
     return c.json({ 
       success: true, 
@@ -2742,6 +2764,72 @@ app.post('/remote-follow', async (c) => {
     return c.json({ 
       success: false, 
       error: `Error following ${remoteUser}: ${error instanceof Error ? error.message : 'Unknown error'}` 
+    });
+  }
+});
+
+// Remote unfollow handler
+app.post('/remote-unfollow', async (c) => {
+  console.log('🔗 Remote unfollow request received');
+  
+  await client.connect();
+  const db = client.db();
+  const users = db.collection<User>('users');
+  
+  const session = getCookie(c, 'session');
+  if (!session || session.length !== 24 || !/^[a-fA-F0-9]+$/.test(session)) {
+    return c.json({ success: false, error: 'Not logged in' });
+  }
+  
+  const currentUser = await users.findOne({ _id: new ObjectId(session) });
+  if (!currentUser) {
+    return c.json({ success: false, error: 'User not found' });
+  }
+  
+  // Validate that currentUser has a valid _id
+  if (!currentUser._id) {
+    console.error('Current user has no _id:', currentUser);
+    return c.json({ success: false, error: 'Invalid user data' });
+  }
+  
+  const body = await c.req.parseBody();
+  const remoteUser = typeof body['remoteUser'] === 'string' ? body['remoteUser'] : '';
+  
+  if (!remoteUser || !remoteUser.includes('@')) {
+    return c.json({ success: false, error: 'Invalid remote user format. Use username@domain' });
+  }
+  
+  const [username, domain] = remoteUser.split('@');
+  if (!username || !domain) {
+    return c.json({ success: false, error: 'Invalid remote user format. Use username@domain' });
+  }
+  
+  try {
+    // Remove the remote follow relationship
+    const follows = db.collection('follows');
+    const result = await follows.deleteOne({
+      followerId: currentUser._id.toString(),
+      followingId: `${username}@${domain}`
+    });
+    
+    if (result.deletedCount > 0) {
+      console.log(`✅ Unfollowed remote user: ${remoteUser}`);
+      return c.json({ 
+        success: true, 
+        message: `Successfully unfollowed ${remoteUser}` 
+      });
+    } else {
+      return c.json({ 
+        success: false, 
+        error: `Not following ${remoteUser}` 
+      });
+    }
+    
+  } catch (error) {
+    console.error('Error unfollowing remote user:', error);
+    return c.json({ 
+      success: false, 
+      error: `Error unfollowing ${remoteUser}: ${error instanceof Error ? error.message : 'Unknown error'}` 
     });
   }
 });
