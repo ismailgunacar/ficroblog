@@ -3,6 +3,7 @@ import { serve } from '@hono/node-server';
 import { MongoClient } from 'mongodb';
 import { getCookie } from 'hono/cookie';
 import { ObjectId } from 'mongodb';
+import dotenv from 'dotenv';
 import { mountFedifyRoutes } from './fedify';
 import { mountAuthRoutes } from './routes/auth';
 import { mountPostRoutes } from './routes/posts';
@@ -10,6 +11,9 @@ import { mountFollowingRoutes } from './routes/following';
 import { renderHome, renderUserProfile } from './views/home';
 import { getDomainFromRequest } from './utils';
 import type { User, Post, Follow } from './models';
+
+// Load environment variables from .env file
+dotenv.config();
 
 const app = new Hono();
 

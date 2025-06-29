@@ -4,6 +4,10 @@ import type { Hono } from 'hono';
 import type { User, Post } from './models';
 import { ObjectId } from 'mongodb';
 import type { MongoClient, Collection } from 'mongodb';
+import dotenv from 'dotenv';
+
+// Load environment variables from .env file
+dotenv.config();
 
 // MongoDB-based KV store for Fedify
 class MongoDBKVStore {
