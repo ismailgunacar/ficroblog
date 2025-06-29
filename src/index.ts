@@ -2803,7 +2803,8 @@ app.post('/remote-follow', async (c) => {
       const response = await fetch(inboxUrl, {
         method: 'POST',
         headers: signedRequest.headers,
-        body: signedRequest.body
+        body: signedRequest.body,
+        duplex: 'half'
       });
       
       if (response.ok) {
