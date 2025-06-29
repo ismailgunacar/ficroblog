@@ -1,4 +1,4 @@
-import { createFederation, MemoryKvStore, Person, Note, Follow, Accept, Create, Like, Announce, Image, Undo, Reject, NodeInfo } from '@fedify/fedify';
+import { createFederation, MemoryKvStore, Person, Note, Follow, Accept, Create, Like, Announce, Image, Undo, Reject, NodeInfo, Actor } from '@fedify/fedify';
 import { federation as fedifyHonoMiddleware } from '@fedify/fedify/x/hono';
 import type { Hono } from 'hono';
 import type { User, Post } from './models';
@@ -167,32 +167,31 @@ export function createFederationInstance(mongoClient: MongoClient) {
       const domain = ctx.hostname;
       console.log(`✅ Creating actor for ${identifier} on domain ${domain}`);
       
-      // Build the actor object
-      const actor: any = {
-        '@context': [
-          'https://www.w3.org/ns/activitystreams',
-          'https://w3id.org/security/v1'
-        ],
-        id: `https://${domain}/users/${user.username}`,
+      // Create a Fedify Actor object instead of plain JSON
+      const actor = new Actor({
+        id: new URL(`https://${domain}/users/${user.username}`),
         type: 'Person',
         preferredUsername: user.username,
         name: user.name || user.username,
         summary: user.bio || '',
-        inbox: `https://${domain}/users/${user.username}/inbox`,
-        outbox: `https://${domain}/users/${user.username}/outbox`,
-        followers: `https://${domain}/users/${user.username}/followers`,
-        following: `https://${domain}/users/${user.username}/following`,
-        url: `https://${domain}/users/${user.username}`,
-        icon: user.avatarUrl ? { type: 'Image', url: user.avatarUrl } : undefined,
-        image: user.headerUrl ? { type: 'Image', url: user.headerUrl } : undefined
-      };
+        inbox: new URL(`https://${domain}/users/${user.username}/inbox`),
+        outbox: new URL(`https://${domain}/users/${user.username}/outbox`),
+        followers: new URL(`https://${domain}/users/${user.username}/followers`),
+        following: new URL(`https://${domain}/users/${user.username}/following`),
+        url: new URL(`https://${domain}/users/${user.username}`),
+        icon: user.avatarUrl ? new Image({ url: new URL(user.avatarUrl) }) : undefined,
+        image: user.headerUrl ? new Image({ url: new URL(user.headerUrl) }) : undefined
+      });
+
+      // Add public key if available
       if (user.publicKey && typeof user.publicKey === 'string' && user.publicKey.trim()) {
         actor.publicKey = {
-          id: `https://${domain}/users/${user.username}#main-key`,
-          owner: `https://${domain}/users/${user.username}`,
+          id: new URL(`https://${domain}/users/${user.username}#main-key`),
+          owner: new URL(`https://${domain}/users/${user.username}`),
           publicKeyPem: user.publicKey
         };
       }
+
       console.log('Actor JSON:', JSON.stringify(actor, null, 2));
       return actor;
     });
