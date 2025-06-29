@@ -165,20 +165,26 @@ export function createFederationInstance(mongoClient: MongoClient) {
       }
 
       const domain = ctx.hostname;
+      console.log(`🔍 Request hostname: ${ctx.hostname}`);
+      console.log(`🔍 Request headers:`, ctx.request?.headers);
       console.log(`✅ Creating actor for ${identifier} on domain ${domain}`);
+      
+      // For development, always use localhost:8000
+      const actorDomain = domain.includes('localhost') ? domain : 'localhost:8000';
+      console.log(`🔧 Using actor domain: ${actorDomain}`);
       
       // Create a Fedify Actor object instead of plain JSON
       const actor = new Person({
-        id: new URL(`https://${domain}/users/${user.username}`),
+        id: new URL(`https://${actorDomain}/users/${user.username}`),
         type: 'Person',
         preferredUsername: user.username,
         name: user.name || user.username,
         summary: user.bio || '',
-        inbox: new URL(`https://${domain}/users/${user.username}/inbox`),
-        outbox: new URL(`https://${domain}/users/${user.username}/outbox`),
-        followers: new URL(`https://${domain}/users/${user.username}/followers`),
-        following: new URL(`https://${domain}/users/${user.username}/following`),
-        url: new URL(`https://${domain}/users/${user.username}`),
+        inbox: new URL(`https://${actorDomain}/users/${user.username}/inbox`),
+        outbox: new URL(`https://${actorDomain}/users/${user.username}/outbox`),
+        followers: new URL(`https://${actorDomain}/users/${user.username}/followers`),
+        following: new URL(`https://${actorDomain}/users/${user.username}/following`),
+        url: new URL(`https://${actorDomain}/users/${user.username}`),
         icon: user.avatarUrl ? new Image({ url: new URL(user.avatarUrl) }) : undefined,
         image: user.headerUrl ? new Image({ url: new URL(user.headerUrl) }) : undefined
       });
@@ -186,8 +192,8 @@ export function createFederationInstance(mongoClient: MongoClient) {
       // Add public key if available
       if (user.publicKey && typeof user.publicKey === 'string' && user.publicKey.trim()) {
         actor.publicKey = {
-          id: new URL(`https://${domain}/users/${user.username}#main-key`),
-          owner: new URL(`https://${domain}/users/${user.username}`),
+          id: new URL(`https://${actorDomain}/users/${user.username}#main-key`),
+          owner: new URL(`https://${actorDomain}/users/${user.username}`),
           publicKeyPem: user.publicKey
         };
       }
