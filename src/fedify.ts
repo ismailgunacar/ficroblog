@@ -532,13 +532,46 @@ export function mountFedifyRoutes(app: Hono, mongoClient: MongoClient) {
   
   const federation = createFederationInstance(mongoClient);
   
-  // Mount Fedify federation middleware on specific ActivityPub routes
-  // Use exact patterns to avoid conflicts with custom routes
-  app.use('/.well-known/webfinger', federation.hono);
-  app.use('/.well-known/nodeinfo', federation.hono);
-  app.use('/users/:username', federation.hono);
-  app.use('/inbox', federation.hono);
-  app.use('/outbox', federation.hono);
+  // Mount Fedify routes by handling specific paths and delegating to Fedify
+  app.use('/.well-known/webfinger', async (c, next) => {
+    const response = await federation.hono.fetch(c.req.raw);
+    if (response.status !== 404) {
+      return new Response(response.body, response);
+    }
+    return next();
+  });
+  
+  app.use('/.well-known/nodeinfo', async (c, next) => {
+    const response = await federation.hono.fetch(c.req.raw);
+    if (response.status !== 404) {
+      return new Response(response.body, response);
+    }
+    return next();
+  });
+  
+  app.use('/users/:username', async (c, next) => {
+    const response = await federation.hono.fetch(c.req.raw);
+    if (response.status !== 404) {
+      return new Response(response.body, response);
+    }
+    return next();
+  });
+  
+  app.use('/inbox', async (c, next) => {
+    const response = await federation.hono.fetch(c.req.raw);
+    if (response.status !== 404) {
+      return new Response(response.body, response);
+    }
+    return next();
+  });
+  
+  app.use('/outbox', async (c, next) => {
+    const response = await federation.hono.fetch(c.req.raw);
+    if (response.status !== 404) {
+      return new Response(response.body, response);
+    }
+    return next();
+  });
   
   console.log('✅ Fedify routes mounted successfully');
 } 
