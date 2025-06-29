@@ -2619,8 +2619,7 @@ app.onError((err, c) => {
   return c.text('Internal Server Error', 500);
 });
 
-// --- Mount Fedify ActivityPub routes ---
-mountFedifyRoutes(app, client);
+// --- Custom federation routes (defined BEFORE Fedify routes) ---
 
 // Simple health check for federation
 app.get('/federation-health', async (c) => {
@@ -2746,6 +2745,9 @@ app.post('/remote-follow', async (c) => {
     });
   }
 });
+
+// --- Mount Fedify ActivityPub routes ---
+mountFedifyRoutes(app, client);
 
 // Add this as the very last line of the file:
 serve({ fetch: app.fetch, port: 8000 });
