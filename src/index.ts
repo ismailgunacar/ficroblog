@@ -727,7 +727,9 @@ function renderHome({
               <span class="stat-number" id="stat-followers">${followerCount}</span> Followers
             </div>
             <div class="stat-item">
-              <span class="stat-number" id="stat-following">${followingCount}</span> Following
+              <a href="/following" style="text-decoration: none; color: inherit;">
+                <span class="stat-number" id="stat-following">${followingCount}</span> Following
+              </a>
             </div>
           </div>
           <p id="profile-bio">${user?.bio || ''}</p>
@@ -1103,7 +1105,9 @@ function renderUserProfile({
               <span class="stat-number">${followerCount}</span> Followers
             </div>
             <div class="stat-item">
-              <span class="stat-number">${followingCount}</span> Following
+              <a href="/following" style="text-decoration: none; color: inherit;">
+                <span class="stat-number" id="stat-following">${followingCount}</span> Following
+              </a>
             </div>
           </div>
           <p id="profile-bio">${profileUser.bio || ''}</p>
@@ -2926,3 +2930,354 @@ mountFedifyRoutes(app, client);
 serve({ fetch: app.fetch, port: 8000 });
 
 console.log('🚀 DEPLOYED VERSION: ' + new Date().toISOString());
+
+// Following list page
+app.get('/following', async (c) => {
+  await client.connect();
+  const db = client.db();
+  const users = db.collection<User>('users');
+  const follows = db.collection<Follow>('follows');
+  
+  // Check if any users exist, if not redirect to setup
+  const anyUser = await users.findOne({});
+  if (!anyUser) return c.redirect('/setup');
+  
+  // Check if current user is logged in
+  const session = getCookie(c, 'session');
+  let loggedIn = false;
+  let currentUser: User | null = null;
+  
+  if (session && session.length === 24 && /^[a-fA-F0-9]+$/.test(session)) {
+    currentUser = await users.findOne({ _id: new ObjectId(session) });
+    if (currentUser) {
+      loggedIn = true;
+    }
+  }
+  
+  if (!loggedIn || !currentUser) {
+    return c.redirect('/');
+  }
+  
+  // Get all users that the current user is following
+  const following = await follows.find({ 
+    followerId: currentUser._id?.toString() 
+  }).toArray();
+  
+  // Separate local and remote follows
+  const localFollows = following.filter(f => !f.remote);
+  const remoteFollows = following.filter(f => f.remote);
+  
+  // Get user details for local follows
+  const localUserIds = localFollows.map(f => f.followingId);
+  const localUsers = await users.find({ 
+    _id: { $in: localUserIds.map(id => new ObjectId(id)) } 
+  }).toArray();
+  
+  const domain = getDomainFromRequest(c);
+  
+  return c.html(renderFollowingList({
+    currentUser,
+    localFollows,
+    remoteFollows,
+    localUsers,
+    domain
+  }));
+});
+
+// Remote unfollow handler for the following list page
+app.post('/remote-unfollow', async (c) => {
+  console.log('🔗 Remote unfollow request received');
+  
+  await client.connect();
+  const db = client.db();
+  const users = db.collection<User>('users');
+  
+  const session = getCookie(c, 'session');
+  if (!session || session.length !== 24 || !/^[a-fA-F0-9]+$/.test(session)) {
+    return c.json({ success: false, error: 'Not logged in' });
+  }
+  
+  const currentUser = await users.findOne({ _id: new ObjectId(session) });
+  if (!currentUser) {
+    return c.json({ success: false, error: 'User not found' });
+  }
+  
+  // Validate that currentUser has a valid _id
+  if (!currentUser._id) {
+    console.error('Current user has no _id:', currentUser);
+    return c.json({ success: false, error: 'Invalid user data' });
+  }
+  
+  const body = await c.req.parseBody();
+  const remoteUser = typeof body['remoteUser'] === 'string' ? body['remoteUser'] : '';
+  
+  if (!remoteUser || !remoteUser.includes('@')) {
+    return c.json({ success: false, error: 'Invalid remote user format. Use username@domain' });
+  }
+  
+  const [username, domain] = remoteUser.split('@');
+  if (!username || !domain) {
+    return c.json({ success: false, error: 'Invalid remote user format. Use username@domain' });
+  }
+  
+  try {
+    // Remove the remote follow relationship
+    const follows = db.collection('follows');
+    const result = await follows.deleteOne({
+      followerId: currentUser._id.toString(),
+      followingId: `${username}@${domain}`
+    });
+    
+    if (result.deletedCount > 0) {
+      console.log(`✅ Unfollowed remote user: ${remoteUser}`);
+      return c.json({ 
+        success: true, 
+        message: `Successfully unfollowed ${remoteUser}` 
+      });
+    } else {
+      return c.json({ 
+        success: false, 
+        error: `Not following ${remoteUser}` 
+      });
+    }
+    
+  } catch (error) {
+    console.error('Error unfollowing remote user:', error);
+    return c.json({ 
+      success: false, 
+      error: `Error unfollowing ${remoteUser}: ${error instanceof Error ? error.message : 'Unknown error'}` 
+    });
+  }
+});
+
+// Render following list page
+function renderFollowingList({
+  currentUser,
+  localFollows,
+  remoteFollows,
+  localUsers,
+  domain
+}: {
+  currentUser: User,
+  localFollows: any[],
+  remoteFollows: any[],
+  localUsers: User[],
+  domain: string
+}) {
+  return `
+    <!DOCTYPE html>
+    <html lang="en" data-theme="light">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>Following - fongoblog2</title>
+      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2.0.6/css/pico.min.css">
+      <style>
+        :root { color-scheme: light; }
+        
+        .container {
+          max-width: 800px;
+          margin: 0 auto;
+          padding: 1rem;
+        }
+        
+        .following-card {
+          margin: 1em 0;
+          padding: 1.5em;
+          border: 1px solid var(--muted-border-color);
+          border-radius: 12px;
+          background: var(--card-background-color, #fff);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .user-info {
+          display: flex;
+          align-items: center;
+          gap: 1em;
+          margin-bottom: 1em;
+        }
+        
+        .avatar {
+          width: 50px;
+          height: 50px;
+          border-radius: 50%;
+          object-fit: cover;
+        }
+        
+        .user-details {
+          flex: 1;
+        }
+        
+        .username {
+          font-weight: bold;
+          font-size: 1.1em;
+          margin: 0;
+        }
+        
+        .display-name {
+          color: var(--muted-color);
+          margin: 0;
+        }
+        
+        .unfollow-btn {
+          background: #dc3545;
+          color: white;
+          border: none;
+          padding: 0.5em 1em;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 0.9em;
+        }
+        
+        .unfollow-btn:hover {
+          background: #c82333;
+        }
+        
+        .remote-badge {
+          background: #17a2b8;
+          color: white;
+          padding: 0.2em 0.5em;
+          border-radius: 4px;
+          font-size: 0.8em;
+          margin-left: 0.5em;
+        }
+        
+        .section-title {
+          margin: 2em 0 1em 0;
+          padding-bottom: 0.5em;
+          border-bottom: 2px solid var(--primary-color);
+        }
+        
+        .empty-state {
+          text-align: center;
+          padding: 2em;
+          color: var(--muted-color);
+        }
+      </style>
+      <script>
+        async function unfollowLocal(username) {
+          if (!confirm('Are you sure you want to unfollow @' + username + '?')) {
+            return;
+          }
+          
+          try {
+            const response = await fetch('/@' + username + '/follow', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' }
+            });
+            
+            const data = await response.json();
+            if (data.success) {
+              // Remove the card from the UI
+              const card = document.querySelector('[data-username="' + username + '"]');
+              if (card) {
+                card.remove();
+              }
+              
+              // Check if there are any remaining cards
+              const remainingCards = document.querySelectorAll('.following-card');
+              if (remainingCards.length === 0) {
+                location.reload(); // Reload to show empty state
+              }
+            } else {
+              alert('Error: ' + data.error);
+            }
+          } catch (error) {
+            console.error('Error unfollowing:', error);
+            alert('Network error. Please try again.');
+          }
+        }
+        
+        async function unfollowRemote(remoteUser) {
+          if (!confirm('Are you sure you want to unfollow ' + remoteUser + '?')) {
+            return;
+          }
+          
+          try {
+            const formData = new FormData();
+            formData.append('remoteUser', remoteUser);
+            
+            const response = await fetch('/remote-unfollow', {
+              method: 'POST',
+              body: formData
+            });
+            
+            const data = await response.json();
+            if (data.success) {
+              // Remove the card from the UI
+              const card = document.querySelector('[data-remote-user="' + remoteUser + '"]');
+              if (card) {
+                card.remove();
+              }
+              
+              // Check if there are any remaining cards
+              const remainingCards = document.querySelectorAll('.following-card');
+              if (remainingCards.length === 0) {
+                location.reload(); // Reload to show empty state
+              }
+            } else {
+              alert('Error: ' + data.error);
+            }
+          } catch (error) {
+            console.error('Error unfollowing:', error);
+            alert('Network error. Please try again.');
+          }
+        }
+      </script>
+    </head>
+    <body class="container">
+      <header>
+        <h1>Following</h1>
+        <p>Users you're following</p>
+        <a href="/" class="secondary">← Back to Home</a>
+      </header>
+      
+      <main>
+        ${localFollows.length > 0 ? `
+          <h2 class="section-title">Local Users (${localFollows.length})</h2>
+          ${localFollows.map(follow => {
+            const user = localUsers.find(u => u._id?.toString() === follow.followingId);
+            if (!user) return '';
+            return `
+              <div class="following-card" data-username="${user.username}">
+                <div class="user-info">
+                  <img src="${user.avatarUrl || 'https://placehold.co/50x50'}" alt="avatar" class="avatar" />
+                  <div class="user-details">
+                    <p class="username">@${user.username}@${domain}</p>
+                    <p class="display-name">${user.name}</p>
+                  </div>
+                  <button onclick="unfollowLocal('${user.username}')" class="unfollow-btn">Unfollow</button>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        ` : ''}
+        
+        ${remoteFollows.length > 0 ? `
+          <h2 class="section-title">Remote Users (${remoteFollows.length})</h2>
+          ${remoteFollows.map(follow => `
+            <div class="following-card" data-remote-user="${follow.followingId}">
+              <div class="user-info">
+                <img src="https://placehold.co/50x50" alt="avatar" class="avatar" />
+                <div class="user-details">
+                  <p class="username">${follow.followingId} <span class="remote-badge">Remote</span></p>
+                  <p class="display-name">Remote user from ${follow.followingId.split('@')[1]}</p>
+                </div>
+                <button onclick="unfollowRemote('${follow.followingId}')" class="unfollow-btn">Unfollow</button>
+              </div>
+            </div>
+          `).join('')}
+        ` : ''}
+        
+        ${localFollows.length === 0 && remoteFollows.length === 0 ? `
+          <div class="empty-state">
+            <h3>You're not following anyone yet</h3>
+            <p>Start following users to see their posts in your timeline!</p>
+            <a href="/" class="primary">Go to Home</a>
+          </div>
+        ` : ''}
+      </main>
+    </body>
+    </html>
+  `;
+}
