@@ -1,4 +1,4 @@
-import { createFederation, MemoryKvStore, Person, Note, Follow, Accept, Create, Like, Announce, Image, Undo, Reject, NodeInfo, Actor } from '@fedify/fedify';
+import { createFederation, MemoryKvStore, Person, Note, Follow, Accept, Create, Like, Announce, Image, Undo, Reject, NodeInfo } from '@fedify/fedify';
 import { federation as fedifyHonoMiddleware } from '@fedify/fedify/x/hono';
 import type { Hono } from 'hono';
 import type { User, Post } from './models';
@@ -168,7 +168,7 @@ export function createFederationInstance(mongoClient: MongoClient) {
       console.log(`✅ Creating actor for ${identifier} on domain ${domain}`);
       
       // Create a Fedify Actor object instead of plain JSON
-      const actor = new Actor({
+      const actor = new Person({
         id: new URL(`https://${domain}/users/${user.username}`),
         type: 'Person',
         preferredUsername: user.username,
