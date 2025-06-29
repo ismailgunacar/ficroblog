@@ -585,66 +585,46 @@ export function mountFedifyRoutes(app: Hono, mongoClient: MongoClient) {
       return;
     }
     
-    // Mount Fedify routes by using the federation's router directly
-    // Since federation.router doesn't have fetch, we'll use it as middleware
-    app.use('/.well-known/webfinger', async (c, next) => {
+    // Mount Fedify routes by using the federation instance directly as middleware
+    // This should properly handle all ActivityPub routes
+    app.use('*', async (c, next) => {
       try {
-        // Use the federation's router directly
-        const result = await federation.router.handle(c.req.raw);
-        if (result) {
-          return new Response(result.body, result);
+        // Check if this is an ActivityPub route
+        const path = c.req.path;
+        const isActivityPubRoute = 
+          path.startsWith('/.well-known/webfinger') ||
+          path.startsWith('/.well-known/nodeinfo') ||
+          path.startsWith('/users/') ||
+          path === '/inbox' ||
+          path === '/outbox';
+        
+        if (isActivityPubRoute) {
+          console.log(`🔗 Handling ActivityPub route: ${path}`);
+          
+          // Try to use the federation instance directly
+          if (typeof federation.handle === 'function') {
+            const result = await federation.handle(c.req.raw);
+            if (result) {
+              console.log(`✅ Fedify handled: ${path}`);
+              return new Response(result.body, result);
+            }
+          }
+          
+          // Fallback: try using the router
+          if (federation.router && typeof federation.router.handle === 'function') {
+            const result = await federation.router.handle(c.req.raw);
+            if (result) {
+              console.log(`✅ Router handled: ${path}`);
+              return new Response(result.body, result);
+            }
+          }
+          
+          console.log(`❌ No handler found for: ${path}`);
         }
       } catch (error) {
-        console.error('❌ Error in webfinger handler:', error);
+        console.error(`❌ Error handling ActivityPub route:`, error);
       }
-      return next();
-    });
-    
-    app.use('/.well-known/nodeinfo', async (c, next) => {
-      try {
-        const result = await federation.router.handle(c.req.raw);
-        if (result) {
-          return new Response(result.body, result);
-        }
-      } catch (error) {
-        console.error('❌ Error in nodeinfo handler:', error);
-      }
-      return next();
-    });
-    
-    app.use('/users/:username', async (c, next) => {
-      try {
-        const result = await federation.router.handle(c.req.raw);
-        if (result) {
-          return new Response(result.body, result);
-        }
-      } catch (error) {
-        console.error('❌ Error in users handler:', error);
-      }
-      return next();
-    });
-    
-    app.use('/inbox', async (c, next) => {
-      try {
-        const result = await federation.router.handle(c.req.raw);
-        if (result) {
-          return new Response(result.body, result);
-        }
-      } catch (error) {
-        console.error('❌ Error in inbox handler:', error);
-      }
-      return next();
-    });
-    
-    app.use('/outbox', async (c, next) => {
-      try {
-        const result = await federation.router.handle(c.req.raw);
-        if (result) {
-          return new Response(result.body, result);
-        }
-      } catch (error) {
-        console.error('❌ Error in outbox handler:', error);
-      }
+      
       return next();
     });
     
