@@ -2649,6 +2649,104 @@ app.get('/federation-health', async (c) => {
   });
 });
 
+// Remote follow handler
+app.post('/remote-follow', async (c) => {
+  console.log('🔗 Remote follow request received');
+  
+  await client.connect();
+  const db = client.db();
+  const users = db.collection<User>('users');
+  
+  const session = getCookie(c, 'session');
+  if (!session || session.length !== 24 || !/^[a-fA-F0-9]+$/.test(session)) {
+    return c.json({ success: false, error: 'Not logged in' });
+  }
+  
+  const currentUser = await users.findOne({ _id: new ObjectId(session) });
+  if (!currentUser) {
+    return c.json({ success: false, error: 'User not found' });
+  }
+  
+  const body = await c.req.parseBody();
+  const remoteUser = typeof body['remoteUser'] === 'string' ? body['remoteUser'] : '';
+  
+  if (!remoteUser || !remoteUser.includes('@')) {
+    return c.json({ success: false, error: 'Invalid remote user format. Use username@domain' });
+  }
+  
+  const [username, domain] = remoteUser.split('@');
+  if (!username || !domain) {
+    return c.json({ success: false, error: 'Invalid remote user format. Use username@domain' });
+  }
+  
+  try {
+    // First, try to discover the remote user via WebFinger
+    const webfingerUrl = `https://${domain}/.well-known/webfinger?resource=acct:${username}@${domain}`;
+    const webfingerResponse = await fetch(webfingerUrl);
+    
+    if (!webfingerResponse.ok) {
+      return c.json({ success: false, error: `Could not find user ${remoteUser} on ${domain}` });
+    }
+    
+    const webfinger = await webfingerResponse.json();
+    
+    // Find the actor URL from WebFinger links
+    const actorLink = webfinger.links?.find((link: any) => 
+      link.rel === 'self' && link.type === 'application/activity+json'
+    );
+    
+    if (!actorLink?.href) {
+      return c.json({ success: false, error: `Could not find actor URL for ${remoteUser}` });
+    }
+    
+    const actorUrl = actorLink.href;
+    
+    // Get the actor profile to find their inbox
+    const actorResponse = await fetch(actorUrl, {
+      headers: {
+        'Accept': 'application/activity+json'
+      }
+    });
+    
+    if (!actorResponse.ok) {
+      return c.json({ success: false, error: `Could not fetch profile for ${remoteUser}` });
+    }
+    
+    const actor = await actorResponse.json();
+    const inboxUrl = actor.inbox;
+    
+    if (!inboxUrl) {
+      return c.json({ success: false, error: `Could not find inbox for ${remoteUser}` });
+    }
+    
+    // For now, just store the remote follow relationship without sending the activity
+    // This allows us to test the UI and database functionality
+    const follows = db.collection('follows');
+    await follows.insertOne({
+      followerId: currentUser._id?.toString(),
+      followingId: `${username}@${domain}`,
+      followingUrl: actorUrl,
+      followingInbox: inboxUrl,
+      remote: true,
+      createdAt: new Date()
+    });
+    
+    return c.json({ 
+      success: true, 
+      message: `Successfully followed ${remoteUser} (stored locally - federation coming soon!)`,
+      actorUrl,
+      inboxUrl
+    });
+    
+  } catch (error) {
+    console.error('Error following remote user:', error);
+    return c.json({ 
+      success: false, 
+      error: `Error following ${remoteUser}: ${error instanceof Error ? error.message : 'Unknown error'}` 
+    });
+  }
+});
+
 // Add this as the very last line of the file:
 serve({ fetch: app.fetch, port: 8000 });
 
