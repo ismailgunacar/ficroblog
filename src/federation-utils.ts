@@ -445,7 +445,9 @@ export async function signRequest(url: string, method: string, body?: string, us
     const signatureString = signatureParts.join('\n');
 
     // Sign the signature string
-    const privateKeyBuffer = new Uint8Array(Buffer.from(privateKey, 'utf8'));
+    const privateKeyPem = privateKey.replace(/-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----|\s/g, '');
+    const privateKeyBuffer = Uint8Array.from(atob(privateKeyPem), c => c.charCodeAt(0));
+    
     const key = await crypto.subtle.importKey(
       'pkcs8',
       privateKeyBuffer,
