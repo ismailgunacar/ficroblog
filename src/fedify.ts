@@ -585,12 +585,14 @@ export function mountFedifyRoutes(app: Hono, mongoClient: MongoClient) {
       return;
     }
     
-    // Mount Fedify routes by handling specific paths and delegating to Fedify
+    // Mount Fedify routes by using the federation's router directly
+    // Since federation.router doesn't have fetch, we'll use it as middleware
     app.use('/.well-known/webfinger', async (c, next) => {
       try {
-        const response = await honoApp.fetch(c.req.raw);
-        if (response.status !== 404) {
-          return new Response(response.body, response);
+        // Use the federation's router directly
+        const result = await federation.router.handle(c.req.raw);
+        if (result) {
+          return new Response(result.body, result);
         }
       } catch (error) {
         console.error('❌ Error in webfinger handler:', error);
@@ -600,9 +602,9 @@ export function mountFedifyRoutes(app: Hono, mongoClient: MongoClient) {
     
     app.use('/.well-known/nodeinfo', async (c, next) => {
       try {
-        const response = await honoApp.fetch(c.req.raw);
-        if (response.status !== 404) {
-          return new Response(response.body, response);
+        const result = await federation.router.handle(c.req.raw);
+        if (result) {
+          return new Response(result.body, result);
         }
       } catch (error) {
         console.error('❌ Error in nodeinfo handler:', error);
@@ -612,9 +614,9 @@ export function mountFedifyRoutes(app: Hono, mongoClient: MongoClient) {
     
     app.use('/users/:username', async (c, next) => {
       try {
-        const response = await honoApp.fetch(c.req.raw);
-        if (response.status !== 404) {
-          return new Response(response.body, response);
+        const result = await federation.router.handle(c.req.raw);
+        if (result) {
+          return new Response(result.body, result);
         }
       } catch (error) {
         console.error('❌ Error in users handler:', error);
@@ -624,9 +626,9 @@ export function mountFedifyRoutes(app: Hono, mongoClient: MongoClient) {
     
     app.use('/inbox', async (c, next) => {
       try {
-        const response = await honoApp.fetch(c.req.raw);
-        if (response.status !== 404) {
-          return new Response(response.body, response);
+        const result = await federation.router.handle(c.req.raw);
+        if (result) {
+          return new Response(result.body, result);
         }
       } catch (error) {
         console.error('❌ Error in inbox handler:', error);
@@ -636,9 +638,9 @@ export function mountFedifyRoutes(app: Hono, mongoClient: MongoClient) {
     
     app.use('/outbox', async (c, next) => {
       try {
-        const response = await honoApp.fetch(c.req.raw);
-        if (response.status !== 404) {
-          return new Response(response.body, response);
+        const result = await federation.router.handle(c.req.raw);
+        if (result) {
+          return new Response(result.body, result);
         }
       } catch (error) {
         console.error('❌ Error in outbox handler:', error);
