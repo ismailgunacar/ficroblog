@@ -54,7 +54,7 @@ export function createFederationInstance(mongoClient: MongoClient) {
   // Set up NodeInfo dispatcher
   federation.setNodeInfoDispatcher('/.well-known/nodeinfo/2.0', async (ctx): Promise<NodeInfo> => {
     console.log('📊 NodeInfo request received');
-    const db = mongoClient.db('fongoblog2');
+    const db = mongoClient.db();
     const users = db.collection('users');
     const posts = db.collection('posts');
     
@@ -93,7 +93,7 @@ export function createFederationInstance(mongoClient: MongoClient) {
   // Set up actor dispatcher
   federation.setActorDispatcher('/users/{identifier}', async (ctx, identifier) => {
     console.log(`👤 Actor request for: ${identifier}`);
-    const db = mongoClient.db('fongoblog2');
+    const db = mongoClient.db();
     const users = db.collection('users');
     
     const user = await users.findOne({ username: identifier });
@@ -124,7 +124,7 @@ export function createFederationInstance(mongoClient: MongoClient) {
   // Set up object dispatcher for posts
   federation.setObjectDispatcher(Note, '/posts/{postId}', async (ctx, { postId }) => {
     console.log(`📝 Note request for post: ${postId}`);
-    const db = mongoClient.db('fongoblog2');
+    const db = mongoClient.db();
     const posts = db.collection('posts');
     const users = db.collection('users');
     
@@ -157,7 +157,7 @@ export function createFederationInstance(mongoClient: MongoClient) {
   // Set up outbox dispatcher
   federation.setOutboxDispatcher('/users/{identifier}/outbox', async (ctx, identifier, cursor) => {
     console.log(`📤 Outbox request for: ${identifier}, cursor: ${cursor}`);
-    const db = mongoClient.db('fongoblog2');
+    const db = mongoClient.db();
     const posts = db.collection('posts');
     const users = db.collection('users');
     
@@ -221,7 +221,7 @@ export function createFederationInstance(mongoClient: MongoClient) {
       
       console.log(`👤 Follow from: ${from.id?.href}`);
       
-      const db = mongoClient.db('fongoblog2');
+      const db = mongoClient.db();
       const users = db.collection('users');
       const follows = db.collection('follows');
       
@@ -255,13 +255,22 @@ export function createFederationInstance(mongoClient: MongoClient) {
       });
       
       if (!existingFollow) {
+        // Validate that we have valid IDs before inserting
+        if (!from.id?.href || !targetUser._id) {
+          console.error('❌ Invalid IDs for follow relationship:', {
+            followerId: from.id?.href,
+            followingId: targetUser._id?.toString()
+          });
+          return;
+        }
+        
         // Create follow relationship
         await follows.insertOne({
-          followerId: from.id?.href,
-          followingId: targetUser._id?.toString(),
+          followerId: from.id.href,
+          followingId: targetUser._id.toString(),
           createdAt: new Date()
         });
-        console.log(`✅ Created follow relationship: ${from.id?.href} -> ${username}`);
+        console.log(`✅ Created follow relationship: ${from.id.href} -> ${username}`);
       } else {
         console.log(`ℹ️ Follow relationship already exists: ${from.id?.href} -> ${username}`);
       }
@@ -319,7 +328,7 @@ export function createFederationInstance(mongoClient: MongoClient) {
       if (undoneObject instanceof Follow) {
         console.log('👋 Processing unfollow...');
         
-        const db = mongoClient.db('fongoblog2');
+        const db = mongoClient.db();
         const users = db.collection('users');
         const follows = db.collection('follows');
         
@@ -384,7 +393,7 @@ export function createFederationInstance(mongoClient: MongoClient) {
       if (rejectedObject instanceof Follow) {
         console.log('🚫 Processing follow rejection...');
         
-        const db = mongoClient.db('fongoblog2');
+        const db = mongoClient.db();
         const users = db.collection('users');
         const follows = db.collection('follows');
         
@@ -439,7 +448,7 @@ export function createFederationInstance(mongoClient: MongoClient) {
       console.log(`📄 Note content: ${object.content?.substring(0, 100)}...`);
       
       // Store the remote post
-      const db = mongoClient.db('fongoblog2');
+      const db = mongoClient.db();
       const posts = db.collection('posts');
       
       await posts.insertOne({
