@@ -125,8 +125,14 @@ export function createFederationInstance(mongoClient: MongoClient) {
     const domain = ctx.hostname;
     console.log(`✅ Creating actor for ${identifier} on domain ${domain}`);
     
-    return new Person({
+    // Return a plain object with all ActivityPub fields, including publicKey
+    return {
+      '@context': [
+        'https://www.w3.org/ns/activitystreams',
+        'https://w3id.org/security/v1'
+      ],
       id: ctx.getActorUri(identifier),
+      type: 'Person',
       preferredUsername: user.username,
       name: user.name || user.username,
       summary: user.bio || '',
@@ -134,10 +140,15 @@ export function createFederationInstance(mongoClient: MongoClient) {
       outbox: ctx.getOutboxUri(identifier),
       followers: ctx.getFollowersUri(identifier),
       following: ctx.getFollowingUri(identifier),
-      url: new URL(`https://${domain}/users/${user.username}`),
-      icon: user.avatarUrl ? new Image({ url: new URL(user.avatarUrl) }) : undefined,
-      image: user.headerUrl ? new Image({ url: new URL(user.headerUrl) }) : undefined
-    });
+      url: `https://${domain}/users/${user.username}`,
+      icon: user.avatarUrl ? { type: 'Image', url: user.avatarUrl } : undefined,
+      image: user.headerUrl ? { type: 'Image', url: user.headerUrl } : undefined,
+      publicKey: user.publicKey ? {
+        id: `https://${domain}/users/${user.username}#main-key`,
+        owner: `https://${domain}/users/${user.username}`,
+        publicKeyPem: user.publicKey
+      } : undefined
+    };
   });
   console.log('👤 Actor dispatcher configured');
 
