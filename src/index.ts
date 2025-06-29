@@ -15,7 +15,7 @@ const app = new Hono();
 app.use(sessionMiddleware);
 
 // Configuration
-const DOMAIN = process.env.DOMAIN;
+// DOMAIN will be determined dynamically from request headers
 
 const mongoUri = process.env.MONGODB_URI;
 if (!mongoUri) {
@@ -24,10 +24,21 @@ if (!mongoUri) {
 
 const client = new MongoClient(mongoUri);
 
+// Function to get domain from request context
+function getDomainFromRequest(c: { req: { header: (name: string) => string | undefined } }): string {
+  const host = c.req.header('host') || c.req.header('Host');
+  if (host) {
+    // Remove port if present (e.g., "localhost:3000" -> "localhost")
+    return host.split(':')[0];
+  }
+  // Fallback for development
+  return 'localhost';
+}
+
 // --- AttachHandlers global script injection ---
-const attachHandlersScript = `
+const attachHandlersScript = (domain: string) => `
 window.attachHandlers = function() {
-  const DOMAIN = '${DOMAIN}';
+  const DOMAIN = '${domain}';
   
   function ensureScriptPresent() {
     // Always ensure the main handler script is present in <head>
@@ -354,7 +365,8 @@ function renderHome({
   allPosts,
   userMap,
   loggedIn,
-  invalidPassword
+  invalidPassword,
+  domain
 }: {
   user: User | null,
   postCount: number,
@@ -363,7 +375,8 @@ function renderHome({
   allPosts: Post[],
   userMap: Map<string, User>,
   loggedIn: boolean,
-  invalidPassword: boolean
+  invalidPassword: boolean,
+  domain: string
 }) {
   return `
     <!DOCTYPE html>
@@ -610,7 +623,7 @@ function renderHome({
           width: 100%;
         }
       </style>
-      <script id="main-handlers-script" data-main-handlers="true" type="text/javascript">${attachHandlersScript}</script>
+      <script id="main-handlers-script" data-main-handlers="true" type="text/javascript">${attachHandlersScript(domain)}</script>
       <script>
         window._mainHandlersScriptContent = document.getElementById('main-handlers-script').textContent;
         // Try to attach handlers immediately
@@ -640,7 +653,7 @@ function renderHome({
         <input id="edit-avatarUrl" name="avatarUrl" value="${user?.avatarUrl || ''}" placeholder="Avatar URL" style="display:none;" class="input" />
         <div class="profile-info">
           <h1 id="profile-name"><a href="/" style="text-decoration: none; color: inherit;">${user?.name || 'fongoblog2'}</a></h1>
-          <p id="profile-username"><a href="/@${user?.username || ''}" style="text-decoration: none; color: inherit;">@${user?.username || ''}@${DOMAIN}</a></p>
+          <p id="profile-username"><a href="/@${user?.username || ''}" style="text-decoration: none; color: inherit;">@${user?.username || ''}@${domain}</a></p>
           <input id="edit-username" name="username" value="${user?.username || ''}" style="display:none;" class="input" />
           <div class="profile-stats">
             <div class="stat-item">
@@ -685,7 +698,7 @@ function renderHome({
           ${allPosts.map(post => `
             <li class="card">
               <header>
-                <a href="/@${userMap.get(post.userId.toString())?.username ?? 'unknown'}" class="post-author">${userMap.get(post.userId.toString())?.name ?? 'Unknown'} <span style="color: var(--muted-color); font-weight: normal;">(@${userMap.get(post.userId.toString())?.username ?? 'unknown'}@${DOMAIN})</span></a>
+                <a href="/@${userMap.get(post.userId.toString())?.username ?? 'unknown'}" class="post-author">${userMap.get(post.userId.toString())?.name ?? 'Unknown'} <span style="color: var(--muted-color); font-weight: normal;">(@${userMap.get(post.userId.toString())?.username ?? 'unknown'}@${domain})</span></a>
               </header>
               <p>${post.content}</p>
               <footer class="post-meta">
@@ -737,7 +750,8 @@ function renderUserProfile({
   isFollowing,
   postCount,
   followerCount,
-  followingCount
+  followingCount,
+  domain
 }: {
   profileUser: User,
   currentUser: User | null,
@@ -748,7 +762,8 @@ function renderUserProfile({
   isFollowing: boolean,
   postCount: number,
   followerCount: number,
-  followingCount: number
+  followingCount: number,
+  domain: string
 }) {
   return `
     <!DOCTYPE html>
@@ -756,7 +771,7 @@ function renderUserProfile({
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1">
-      <title>@${profileUser.username}@${DOMAIN} - fongoblog2</title>
+      <title>@${profileUser.username}@${domain} - fongoblog2</title>
       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2.0.6/css/pico.min.css">
       <style>
         :root { color-scheme: light; }
@@ -987,7 +1002,7 @@ function renderUserProfile({
         <img id="avatar-img" src="${profileUser.avatarUrl || ''}" alt="avatar" style="width:60px;height:60px;border-radius:50%;object-fit:cover;${profileUser.avatarUrl ? '' : 'display:none;'}" />
         <div class="profile-info">
           <h1 id="profile-name"><a href="/" style="text-decoration: none; color: inherit;">${profileUser.name}</a></h1>
-          <p id="profile-username"><a href="/@${profileUser.username}" style="text-decoration: none; color: inherit;">@${profileUser.username}@${DOMAIN}</a></p>
+          <p id="profile-username"><a href="/@${profileUser.username}" style="text-decoration: none; color: inherit;">@${profileUser.username}@${domain}</a></p>
           <div class="profile-stats">
             <div class="stat-item">
               <span class="stat-number">${postCount}</span> Posts
@@ -1016,7 +1031,7 @@ function renderUserProfile({
           ${userPosts.map(post => `
             <li class="card">
               <header>
-                <a href="/@${userMap.get(post.userId.toString())?.username ?? 'unknown'}" class="post-author">${userMap.get(post.userId.toString())?.name ?? 'Unknown'} <span style="color: var(--muted-color); font-weight: normal;">(@${userMap.get(post.userId.toString())?.username ?? 'unknown'}@${DOMAIN})</span></a>
+                <a href="/@${userMap.get(post.userId.toString())?.username ?? 'unknown'}" class="post-author">${userMap.get(post.userId.toString())?.name ?? 'Unknown'} <span style="color: var(--muted-color); font-weight: normal;">(@${userMap.get(post.userId.toString())?.username ?? 'unknown'}@${domain})</span></a>
               </header>
               <p>${post.content}</p>
               <footer class="post-meta">
@@ -1067,7 +1082,8 @@ function renderPostPermalink({
   loggedIn,
   postCount,
   followerCount,
-  followingCount
+  followingCount,
+  domain
 }: {
   post: Post,
   postAuthor: User,
@@ -1076,7 +1092,8 @@ function renderPostPermalink({
   loggedIn: boolean,
   postCount: number,
   followerCount: number,
-  followingCount: number
+  followingCount: number,
+  domain: string
 }) {
   return `
     <!DOCTYPE html>
@@ -1084,7 +1101,7 @@ function renderPostPermalink({
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1">
-      <title>@${postAuthor.username}@${DOMAIN} - fongoblog2</title>
+      <title>@${postAuthor.username}@${domain} - fongoblog2</title>
       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2.0.6/css/pico.min.css">
       <style>
         :root { color-scheme: light; }
@@ -1253,7 +1270,7 @@ function renderPostPermalink({
         <img id="avatar-img" src="${postAuthor.avatarUrl || ''}" alt="avatar" style="width:60px;height:60px;border-radius:50%;object-fit:cover;${postAuthor.avatarUrl ? '' : 'display:none;'}" />
         <div class="profile-info">
           <h1 id="profile-name"><a href="/" style="text-decoration: none; color: inherit;">${postAuthor.name}</a></h1>
-          <p id="profile-username"><a href="/@${postAuthor.username}" style="text-decoration: none; color: inherit;">@${postAuthor.username}@${DOMAIN}</a></p>
+          <p id="profile-username"><a href="/@${postAuthor.username}" style="text-decoration: none; color: inherit;">@${postAuthor.username}@${domain}</a></p>
           <div class="profile-stats">
             <div class="stat-item">
               <span class="stat-number">${postCount}</span> Posts
@@ -1273,7 +1290,7 @@ function renderPostPermalink({
         <ul class="timeline-list">
           <li class="card">
             <header>
-              <a href="/@${userMap.get(post.userId.toString())?.username ?? 'unknown'}" class="post-author">${userMap.get(post.userId.toString())?.name ?? 'Unknown'} <span style="color: var(--muted-color); font-weight: normal;">(@${userMap.get(post.userId.toString())?.username ?? 'unknown'}@${DOMAIN})</span></a>
+              <a href="/@${userMap.get(post.userId.toString())?.username ?? 'unknown'}" class="post-author">${userMap.get(post.userId.toString())?.name ?? 'Unknown'} <span style="color: var(--muted-color); font-weight: normal;">(@${userMap.get(post.userId.toString())?.username ?? 'unknown'}@${domain})</span></a>
             </header>
             <p>${post.content}</p>
             <footer class="post-meta">
@@ -1381,6 +1398,7 @@ app.get('/@*', async (c) => {
   userMap.set(profileUser._id?.toString() || '', profileUser);
   
   console.log('Rendering @username profile page for:', username);
+  const domain = getDomainFromRequest(c);
   return c.html(renderUserProfile({ 
     profileUser, 
     currentUser, 
@@ -1391,7 +1409,8 @@ app.get('/@*', async (c) => {
     isFollowing, 
     postCount, 
     followerCount, 
-    followingCount 
+    followingCount,
+    domain
   }));
 });
 
@@ -1465,6 +1484,7 @@ app.get('/user/:username', async (c) => {
   userMap.set(profileUser._id?.toString() || '', profileUser);
   
   console.log('Rendering profile page for:', username);
+  const domain = getDomainFromRequest(c);
   return c.html(renderUserProfile({ 
     profileUser, 
     currentUser, 
@@ -1475,7 +1495,8 @@ app.get('/user/:username', async (c) => {
     isFollowing, 
     postCount, 
     followerCount, 
-    followingCount 
+    followingCount,
+    domain
   }));
 });
 
@@ -1539,6 +1560,7 @@ app.get('/post/:postId', async (c) => {
   const followingCount = await follows.countDocuments({ followerId: postAuthor._id?.toString() });
   
   console.log('Rendering post permalink page for:', postId);
+  const domain = getDomainFromRequest(c);
   return c.html(renderPostPermalink({ 
     post, 
     postAuthor, 
@@ -1547,7 +1569,8 @@ app.get('/post/:postId', async (c) => {
     loggedIn, 
     postCount, 
     followerCount, 
-    followingCount 
+    followingCount,
+    domain
   }));
 });
 
@@ -1558,6 +1581,7 @@ app.get('/setup', async (c) => {
   const users = db.collection<User>('users');
   const user = await users.findOne({});
   if (user) return c.redirect('/');
+  const domain = getDomainFromRequest(c);
   return c.html(`
     <!DOCTYPE html>
     <html lang="en" data-theme="light">
@@ -1572,68 +1596,24 @@ app.get('/setup', async (c) => {
         .container {
           max-width: 600px;
           margin: 0 auto;
-          padding: 2rem 1rem;
-        }
-        
-        .setup-card {
-          margin: 2em 0;
-          padding: 2em;
-          border: 1px solid var(--muted-border-color);
-          border-radius: 12px;
-          background: var(--card-background-color, #fff);
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+          padding: 2rem;
         }
         
         .setup-header {
           text-align: center;
-          margin-bottom: 2em;
-        }
-        
-        .setup-header h1 {
-          margin: 0 0 0.5em 0;
-          font-size: 2.5em;
-          font-weight: 700;
-          color: var(--primary-color);
-        }
-        
-        .setup-header p {
-          margin: 0;
-          color: var(--muted-color);
-          font-size: 1.1em;
+          margin-bottom: 2rem;
         }
         
         .setup-form {
-          margin-top: 2em;
-        }
-        
-        .setup-form .grid {
-          gap: 1rem;
-        }
-        
-        .setup-form input {
-          width: 100%;
-          box-sizing: border-box;
-        }
-        
-        .setup-form button {
-          width: 100%;
-          margin-top: 1rem;
-          font-size: 1.1em;
-          padding: 0.75em;
-        }
-        
-        .welcome-message {
-          background: var(--primary-color);
-          color: white;
-          padding: 1em;
+          background: var(--card-background-color);
+          padding: 2rem;
           border-radius: 8px;
-          margin-bottom: 2em;
-          text-align: center;
+          border: 1px solid var(--muted-border-color);
         }
       </style>
     </head>
-    <body class="container">
-      <div class="setup-card">
+    <body>
+      <div class="container">
         <div class="setup-header">
           <h1>Welcome to fongoblog2</h1>
           <p>This is (supposed to be) a federated single-user microblog on MongoDB Atlas. Let's get you set up.</p>
@@ -1643,7 +1623,7 @@ app.get('/setup', async (c) => {
         <form method="post" action="/setup" class="setup-form">
           
           <div>
-            <label for="username">Username@${DOMAIN}</label>
+            <label for="username">Username@${domain}</label>
             <input name="username" id="username" placeholder="Enter your username" required />
           </div>
           <div>
@@ -1733,7 +1713,8 @@ app.get('/', async (c) => {
   }
   // Detect if JSON is expected
   const wantsJson = c.req.header('x-requested-with') === 'fetch' || c.req.header('accept')?.includes('application/json') || c.req.header('content-type')?.includes('application/json');
-  const html = renderHome({ user, postCount, followerCount, followingCount, allPosts, userMap, loggedIn, invalidPassword: false });
+  const domain = getDomainFromRequest(c);
+  const html = renderHome({ user, postCount, followerCount, followingCount, allPosts, userMap, loggedIn, invalidPassword: false, domain });
   if (wantsJson) {
     return c.json({ html });
   }
@@ -1796,17 +1777,20 @@ app.post('/', async (c) => {
     if (!valid) {
       if (wantsJson) {
         console.log('Login failed, returning JSON response');
-        return c.json({ success: false, html: renderHome({ user, postCount, followerCount, followingCount, allPosts, userMap, loggedIn: false, invalidPassword: true }) });
+        const domain = getDomainFromRequest(c);
+        return c.json({ success: false, html: renderHome({ user, postCount, followerCount, followingCount, allPosts, userMap, loggedIn: false, invalidPassword: true, domain }) });
       }
       console.log('Login failed, returning HTML response');
-      return c.html(renderHome({ user, postCount, followerCount, followingCount, allPosts, userMap, loggedIn: false, invalidPassword: true }));
+      const domain = getDomainFromRequest(c);
+      return c.html(renderHome({ user, postCount, followerCount, followingCount, allPosts, userMap, loggedIn: false, invalidPassword: true, domain }));
     }
     if (user._id) {
       setSessionCookie(c, user._id.toString());
     }
     if (wantsJson) {
       console.log('Login successful, returning JSON response');
-      return c.json({ success: true, html: renderHome({ user, postCount, followerCount, followingCount, allPosts, userMap, loggedIn: true, invalidPassword: false }) });
+      const domain = getDomainFromRequest(c);
+      return c.json({ success: true, html: renderHome({ user, postCount, followerCount, followingCount, allPosts, userMap, loggedIn: true, invalidPassword: false, domain }) });
     }
     console.log('Login successful, redirecting');
     return c.redirect('/');
