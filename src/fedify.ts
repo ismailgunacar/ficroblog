@@ -517,13 +517,10 @@ export function mountFedifyRoutes(app: Hono, mongoClient: MongoClient) {
   
   const federation = createFederationInstance(mongoClient);
   
-  // Mount Fedify federation middleware only on specific ActivityPub routes
-  // Use more specific paths to avoid conflicts with custom routes
+  // Mount Fedify federation middleware on all ActivityPub routes
+  // This includes the actor endpoint that was being intercepted
   app.use('/.well-known/*', federation.hono);
-  app.use('/users/*/outbox', federation.hono);
-  app.use('/users/*/inbox', federation.hono);
-  app.use('/users/*/followers', federation.hono);
-  app.use('/users/*/following', federation.hono);
+  app.use('/users/*', federation.hono); // This handles /users/:username for actors
   app.use('/inbox', federation.hono);
   app.use('/outbox', federation.hono);
   

@@ -78,7 +78,7 @@ app.get('/', async (c) => {
             if (outboxUrl) {
               // Fetch recent posts from the outbox
               const outboxResponse = await fetch(outboxUrl, {
-                headers: {
+          headers: { 
                   'Accept': 'application/activity+json'
                 }
               });
@@ -148,7 +148,7 @@ app.get('/', async (c) => {
           // Handle both ObjectId and string types
           const userId = typeof post.userId === 'string' ? new ObjectId(post.userId) : post.userId;
           user = await users.findOne({ _id: userId });
-        } catch (e) {
+            } catch (e) {
           // ignore invalid ObjectId
         }
         if (user) {
@@ -179,7 +179,7 @@ app.get('/', async (c) => {
 });
 
 // User profile page
-app.get('/users/:username', async (c) => {
+app.get('/profile/:username', async (c) => {
   const username = c.req.param('username');
   
   await client.connect();
@@ -267,8 +267,8 @@ app.post('/follow', async (c) => {
   }
   
   // Check if already following
-  const existingFollow = await follows.findOne({
-    followerId: currentUser._id?.toString(),
+  const existingFollow = await follows.findOne({ 
+    followerId: currentUser._id?.toString(), 
     followingId: targetUserId
   });
   
@@ -311,12 +311,12 @@ app.post('/unfollow', async (c) => {
   
   // Remove follow relationship
   const result = await follows.deleteOne({
-    followerId: currentUser._id?.toString(),
+    followerId: currentUser._id?.toString(), 
     followingId: targetUserId
   });
   
   if (result.deletedCount > 0) {
-    return c.json({ success: true });
+  return c.json({ success: true });
   } else {
     return c.json({ success: false, error: 'Not following this user' });
   }
@@ -332,13 +332,13 @@ app.get('/federation-health', async (c) => {
   });
 });
 
-// Mount modular routes FIRST (before Fedify routes to avoid conflicts)
+// Mount Fedify ActivityPub routes FIRST (before custom routes)
+mountFedifyRoutes(app, client);
+
+// Mount modular routes AFTER Fedify routes
 mountAuthRoutes(app, client);
 mountPostRoutes(app, client);
 mountFollowingRoutes(app, client);
-
-// Mount Fedify ActivityPub routes AFTER custom routes
-mountFedifyRoutes(app, client);
 
 // Start server
 serve({ fetch: app.fetch, port: 8000 });

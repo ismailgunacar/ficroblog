@@ -216,7 +216,8 @@ export function renderHome({
                 <span class="federation-status status-healthy">✅ Healthy</span>
                 Your profile is federated and discoverable by other ActivityPub servers.
               </p>
-              <p><strong>Your Profile URL:</strong> <a href="https://${domain}/users/${user.username}" target="_blank">https://${domain}/users/${user.username}</a></p>
+              <p><strong>Your Profile URL:</strong> <a href="https://${domain}/profile/${user.username}" target="_blank">https://${domain}/profile/${user.username}</a></p>
+              <p><strong>ActivityPub Actor URL:</strong> <a href="https://${domain}/users/${user.username}" target="_blank">https://${domain}/users/${user.username}</a></p>
               <p><strong>WebFinger:</strong> <a href="https://${domain}/.well-known/webfinger?resource=acct:${user.username}@${domain}" target="_blank">acct:${user.username}@${domain}</a></p>
               <p><strong>NodeInfo:</strong> <a href="https://${domain}/.well-known/nodeinfo/2.0" target="_blank">https://${domain}/.well-known/nodeinfo/2.0</a></p>
             </div>
