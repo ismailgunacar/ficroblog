@@ -72,12 +72,46 @@ export function createFederationInstance(mongoClient: MongoClient) {
     });
     console.log('✅ Fedify federation instance created');
     console.log('🔍 Federation instance:', typeof federation);
-    console.log('🔍 Federation.hono:', typeof federation.hono);
+    console.log('🔍 Federation keys:', Object.keys(federation));
     
-    if (!federation.hono) {
-      console.error('❌ federation.hono is undefined!');
-      throw new Error('Fedify federation.hono is undefined');
+    // Try different ways to access the Hono app
+    let honoApp = null;
+    
+    // Method 1: Try federation.hono
+    if (federation.hono) {
+      honoApp = federation.hono;
+      console.log('✅ Found federation.hono');
     }
+    // Method 2: Try federation.app
+    else if (federation.app) {
+      honoApp = federation.app;
+      console.log('✅ Found federation.app');
+    }
+    // Method 3: Try federation.router
+    else if (federation.router) {
+      honoApp = federation.router;
+      console.log('✅ Found federation.router');
+    }
+    // Method 4: Try federation.getHonoApp()
+    else if (typeof federation.getHonoApp === 'function') {
+      honoApp = federation.getHonoApp();
+      console.log('✅ Found federation.getHonoApp()');
+    }
+    // Method 5: Try federation.createHonoApp()
+    else if (typeof federation.createHonoApp === 'function') {
+      honoApp = federation.createHonoApp();
+      console.log('✅ Found federation.createHonoApp()');
+    }
+    
+    if (!honoApp) {
+      console.error('❌ Could not find Hono app in federation instance');
+      console.error('🔍 Available properties:', Object.getOwnPropertyNames(federation));
+      console.error('🔍 Available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(federation)));
+      throw new Error('Fedify Hono app is not available');
+    }
+    
+    console.log('🔍 Hono app type:', typeof honoApp);
+    console.log('🔍 Hono app keys:', Object.keys(honoApp));
 
     // Set up NodeInfo dispatcher
     federation.setNodeInfoDispatcher('/.well-known/nodeinfo/2.0', async (ctx): Promise<NodeInfo> => {
@@ -531,7 +565,8 @@ export function createFederationInstance(mongoClient: MongoClient) {
     console.log('📥 Inbox listeners configured');
     console.log('🎉 Fedify federation instance fully configured!');
     
-    return federation;
+    // Return both federation and honoApp
+    return { federation, honoApp };
   } catch (error) {
     console.error('❌ Error creating Fedify federation instance:', error);
     throw error;
@@ -543,9 +578,9 @@ export function mountFedifyRoutes(app: Hono, mongoClient: MongoClient) {
   console.log('🔗 Mounting Fedify routes...');
   
   try {
-    const federation = createFederationInstance(mongoClient);
+    const { federation, honoApp } = createFederationInstance(mongoClient);
     
-    if (!federation || !federation.hono) {
+    if (!federation || !honoApp) {
       console.error('❌ Fedify federation instance or hono app is undefined');
       return;
     }
@@ -553,7 +588,7 @@ export function mountFedifyRoutes(app: Hono, mongoClient: MongoClient) {
     // Mount Fedify routes by handling specific paths and delegating to Fedify
     app.use('/.well-known/webfinger', async (c, next) => {
       try {
-        const response = await federation.hono.fetch(c.req.raw);
+        const response = await honoApp.fetch(c.req.raw);
         if (response.status !== 404) {
           return new Response(response.body, response);
         }
@@ -565,7 +600,7 @@ export function mountFedifyRoutes(app: Hono, mongoClient: MongoClient) {
     
     app.use('/.well-known/nodeinfo', async (c, next) => {
       try {
-        const response = await federation.hono.fetch(c.req.raw);
+        const response = await honoApp.fetch(c.req.raw);
         if (response.status !== 404) {
           return new Response(response.body, response);
         }
@@ -577,7 +612,7 @@ export function mountFedifyRoutes(app: Hono, mongoClient: MongoClient) {
     
     app.use('/users/:username', async (c, next) => {
       try {
-        const response = await federation.hono.fetch(c.req.raw);
+        const response = await honoApp.fetch(c.req.raw);
         if (response.status !== 404) {
           return new Response(response.body, response);
         }
@@ -589,7 +624,7 @@ export function mountFedifyRoutes(app: Hono, mongoClient: MongoClient) {
     
     app.use('/inbox', async (c, next) => {
       try {
-        const response = await federation.hono.fetch(c.req.raw);
+        const response = await honoApp.fetch(c.req.raw);
         if (response.status !== 404) {
           return new Response(response.body, response);
         }
@@ -601,7 +636,7 @@ export function mountFedifyRoutes(app: Hono, mongoClient: MongoClient) {
     
     app.use('/outbox', async (c, next) => {
       try {
-        const response = await federation.hono.fetch(c.req.raw);
+        const response = await honoApp.fetch(c.req.raw);
         if (response.status !== 404) {
           return new Response(response.body, response);
         }
