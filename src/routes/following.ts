@@ -210,7 +210,7 @@ export function mountFollowingRoutes(app: Hono, client: MongoClient) {
             'Content-Type': 'application/activity+json',
             'Accept': 'application/activity+json'
           }
-        }, currentUser.username);
+        }, currentUser.username, client);
         
         const response = await fetch(inboxUrl, {
           method: 'POST',

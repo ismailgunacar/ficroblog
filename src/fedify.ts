@@ -9,14 +9,30 @@ import dotenv from 'dotenv';
 // Load environment variables from .env file
 dotenv.config();
 
+// Helper function to extract database name from MongoDB URI
+function getDatabaseNameFromUri(uri: string): string {
+  try {
+    const url = new URL(uri);
+    // Remove leading slash and get database name
+    const dbName = url.pathname.substring(1);
+    return dbName || 'fongoblog2'; // fallback to default if no database specified
+  } catch (error) {
+    console.warn('Could not parse MongoDB URI, using default database name');
+    return 'fongoblog2';
+  }
+}
+
 // MongoDB-based KV store for Fedify
 class MongoDBKVStore {
   private db: any;
   private collection: Collection;
 
-  constructor(client: MongoClient, dbName: string) {
+  constructor(client: MongoClient) {
+    // Use the same database as the main app
+    const dbName = getDatabaseNameFromUri(process.env.MONGODB_URI || '');
     this.db = client.db(dbName);
     this.collection = this.db.collection('fedify_kv');
+    console.log(`📦 Using database: ${dbName} for Fedify KV store`);
   }
 
   async get<T = unknown>(key: readonly string[]): Promise<T | undefined> {
@@ -45,7 +61,7 @@ export function createFederationInstance(mongoClient: MongoClient) {
   console.log('🔧 Creating Fedify federation instance...');
   
   // Create the Federation instance with full configuration
-  const kvStore = new MongoDBKVStore(mongoClient, 'fongoblog2');
+  const kvStore = new MongoDBKVStore(mongoClient);
   console.log('📦 Created MongoDB KV store for Fedify');
 
   const federation = createFederation({

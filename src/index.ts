@@ -23,7 +23,7 @@ console.log('NODE_ENV:', process.env.NODE_ENV || 'Not set');
 const app = new Hono();
 
 // MongoDB connection
-const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/fongoblog2';
+const mongoUri = process.env.MONGODB_URI;
 console.log('🔗 Using MongoDB URI:', mongoUri.substring(0, 20) + '...');
 export const client = new MongoClient(mongoUri);
 
