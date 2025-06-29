@@ -2629,3 +2629,5 @@ mountFedifyRoutes(app, client);
 
 // Add this as the very last line of the file:
 serve({ fetch: app.fetch, port: 8000 });
+
+console.log('🚀 DEPLOYED VERSION: ' + new Date().toISOString());
