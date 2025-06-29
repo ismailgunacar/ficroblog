@@ -173,7 +173,7 @@ export function createFederationInstance(mongoClient: MongoClient) {
       const actorDomain = domain;
       console.log(`🔧 Using actor domain: ${actorDomain}`);
       
-      // Create a Fedify Actor object instead of plain JSON
+      // Create a Fedify Person object with publicKey in the constructor
       const actor = new Person({
         id: new URL(`https://${actorDomain}/users/${user.username}`),
         type: 'Person',
@@ -186,17 +186,15 @@ export function createFederationInstance(mongoClient: MongoClient) {
         following: new URL(`https://${actorDomain}/users/${user.username}/following`),
         url: new URL(`https://${actorDomain}/users/${user.username}`),
         icon: user.avatarUrl ? new Image({ url: new URL(user.avatarUrl) }) : undefined,
-        image: user.headerUrl ? new Image({ url: new URL(user.headerUrl) }) : undefined
+        image: user.headerUrl ? new Image({ url: new URL(user.headerUrl) }) : undefined,
+        publicKey: user.publicKey && typeof user.publicKey === 'string' && user.publicKey.trim()
+          ? {
+              id: new URL(`https://${actorDomain}/users/${user.username}#main-key`),
+              owner: new URL(`https://${actorDomain}/users/${user.username}`),
+              publicKeyPem: user.publicKey
+            }
+          : undefined
       });
-
-      // Add public key if available
-      if (user.publicKey && typeof user.publicKey === 'string' && user.publicKey.trim()) {
-        actor.publicKey = {
-          id: new URL(`https://${actorDomain}/users/${user.username}#main-key`),
-          owner: new URL(`https://${actorDomain}/users/${user.username}`),
-          publicKeyPem: user.publicKey
-        };
-      }
 
       console.log('Actor JSON:', JSON.stringify(actor, null, 2));
       return actor;
