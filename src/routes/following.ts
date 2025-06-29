@@ -202,15 +202,12 @@ export function mountFollowingRoutes(app: Hono, client: MongoClient) {
         console.log('📋 Follow activity:', followActivity);
         
         // Sign and send the activity
-        const signedRequest = await signRequest({
-          method: 'POST',
-          url: inboxUrl,
-          body: JSON.stringify(followActivity),
-          headers: {
-            'Content-Type': 'application/activity+json',
-            'Accept': 'application/activity+json'
-          }
-        }, currentUser.username, client);
+        const signedRequest = await signRequest(
+          inboxUrl,
+          'POST',
+          JSON.stringify(followActivity),
+          currentUser._id?.toString()
+        );
         
         const response = await fetch(inboxUrl, {
           method: 'POST',
