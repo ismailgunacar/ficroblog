@@ -198,6 +198,73 @@ export function createFederationInstance(mongoClient: MongoClient) {
     });
     console.log('👤 Actor dispatcher configured');
 
+    // Register followers and following collection paths
+    federation.setFollowersDispatcher('/users/{identifier}/followers', async (ctx, identifier, cursor) => {
+      console.log(`👥 Followers request for: ${identifier}, cursor: ${cursor}`);
+      const db = mongoClient.db();
+      const users = db.collection('users');
+      const follows = db.collection('follows');
+      
+      const user = await users.findOne({ username: identifier });
+      if (!user) {
+        console.log(`❌ User not found for followers: ${identifier}`);
+        return null;
+      }
+
+      const limit = 20;
+      const skip = cursor ? Number.parseInt(cursor, 10) : 0;
+      
+      const followers = await follows
+        .find({ following_id: user._id.toString() })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .toArray();
+
+      console.log(`✅ Followers: ${followers.length} followers for ${identifier}`);
+      
+      const followerActors = followers.map((follow: any) => new URL(follow.follower_id));
+
+      return {
+        items: followerActors,
+        nextCursor: followers.length === limit ? (skip + limit).toString() : null
+      };
+    });
+
+    federation.setFollowingDispatcher('/users/{identifier}/following', async (ctx, identifier, cursor) => {
+      console.log(`👥 Following request for: ${identifier}, cursor: ${cursor}`);
+      const db = mongoClient.db();
+      const users = db.collection('users');
+      const follows = db.collection('follows');
+      
+      const user = await users.findOne({ username: identifier });
+      if (!user) {
+        console.log(`❌ User not found for following: ${identifier}`);
+        return null;
+      }
+
+      const limit = 20;
+      const skip = cursor ? Number.parseInt(cursor, 10) : 0;
+      
+      const following = await follows
+        .find({ follower_id: user._id.toString() })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .toArray();
+
+      console.log(`✅ Following: ${following.length} following for ${identifier}`);
+      
+      const followingActors = following.map((follow: any) => new URL(follow.following_id));
+
+      return {
+        items: followingActors,
+        nextCursor: following.length === limit ? (skip + limit).toString() : null
+      };
+    });
+
+    console.log('👥 Followers and following dispatchers configured');
+
     // Set up object dispatcher for posts
     federation.setObjectDispatcher(Note, '/posts/{postId}', async (ctx, { postId }) => {
       console.log(`📝 Note request for post: ${postId}`);
