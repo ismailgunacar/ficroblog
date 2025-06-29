@@ -2749,6 +2749,26 @@ app.post('/remote-follow', async (c) => {
     };
     
     console.log('📝 Inserting remote follow:', followData);
+    console.log('🔍 Debug info:', {
+      currentUser: currentUser,
+      currentUserId: currentUser._id,
+      currentUserIdString: currentUser._id?.toString(),
+      session: session,
+      remoteUser: remoteUser,
+      username: username,
+      domain: domain
+    });
+    
+    // Double-check that we have valid data before inserting
+    if (!followData.followerId || followData.followerId === 'null' || followData.followerId === 'undefined') {
+      console.error('❌ Invalid followerId detected:', followData.followerId);
+      return c.json({ success: false, error: 'Invalid user data - missing follower ID' });
+    }
+    
+    if (!followData.followingId || followData.followingId === 'null' || followData.followingId === 'undefined') {
+      console.error('❌ Invalid followingId detected:', followData.followingId);
+      return c.json({ success: false, error: 'Invalid remote user data' });
+    }
     
     await follows.insertOne(followData);
     

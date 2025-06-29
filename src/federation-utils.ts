@@ -47,10 +47,10 @@ export async function getFollowers(username: string) {
   const user = await users.findOne({ username });
   if (!user) return [];
 
-  const followers = await follows.find({ followingId: user._id?.toString() }).toArray();
+  const followers = await follows.find({ following_id: user._id?.toString() }).toArray();
   
   return followers.map(f => ({
-    followerId: f.followerId,
+    follower_id: f.follower_id,
     createdAt: f.createdAt
   }));
 }
@@ -66,10 +66,10 @@ export async function getFollowing(username: string) {
   const user = await users.findOne({ username });
   if (!user) return [];
 
-  const following = await follows.find({ followerId: user._id?.toString() }).toArray();
+  const following = await follows.find({ follower_id: user._id?.toString() }).toArray();
   
   return following.map(f => ({
-    followingId: f.followingId,
+    following_id: f.following_id,
     createdAt: f.createdAt
   }));
 }
@@ -88,8 +88,8 @@ export async function isFollowing(followerUsername: string, followingUsername: s
   if (!follower || !following) return false;
 
   const follow = await follows.findOne({
-    followerId: follower._id?.toString(),
-    followingId: following._id?.toString()
+    follower_id: follower._id?.toString(),
+    following_id: following._id?.toString()
   });
 
   return !!follow;
@@ -112,8 +112,8 @@ export async function createFollow(followerUsername: string, followingUsername: 
 
   // Check if already following
   const existingFollow = await follows.findOne({
-    followerId: follower._id?.toString(),
-    followingId: following._id?.toString()
+    follower_id: follower._id?.toString(),
+    following_id: following._id?.toString()
   });
 
   if (existingFollow) {
@@ -122,8 +122,8 @@ export async function createFollow(followerUsername: string, followingUsername: 
 
   // Create follow relationship
   const follow = await follows.insertOne({
-    followerId: follower._id?.toString(),
-    followingId: following._id?.toString(),
+    follower_id: follower._id?.toString(),
+    following_id: following._id?.toString(),
     createdAt: new Date()
   });
 
@@ -148,8 +148,8 @@ export async function removeFollow(followerUsername: string, followingUsername: 
   }
 
   const result = await follows.deleteOne({
-    followerId: follower._id?.toString(),
-    followingId: following._id?.toString()
+    follower_id: follower._id?.toString(),
+    following_id: following._id?.toString()
   });
 
   console.log(`Removed follow relationship: ${followerUsername} -> ${followingUsername}`);

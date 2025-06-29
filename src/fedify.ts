@@ -250,24 +250,24 @@ export function createFederationInstance(mongoClient: MongoClient) {
       
       // Check if already following
       const existingFollow = await follows.findOne({
-        followerId: from.id?.href,
-        followingId: targetUser._id?.toString()
+        follower_id: from.id?.href,
+        following_id: targetUser._id?.toString()
       });
       
       if (!existingFollow) {
         // Validate that we have valid IDs before inserting
         if (!from.id?.href || !targetUser._id) {
           console.error('❌ Invalid IDs for follow relationship:', {
-            followerId: from.id?.href,
-            followingId: targetUser._id?.toString()
+            follower_id: from.id?.href,
+            following_id: targetUser._id?.toString()
           });
           return;
         }
         
         // Create follow relationship
         await follows.insertOne({
-          followerId: from.id.href,
-          followingId: targetUser._id.toString(),
+          follower_id: from.id.href,
+          following_id: targetUser._id.toString(),
           createdAt: new Date()
         });
         console.log(`✅ Created follow relationship: ${from.id.href} -> ${username}`);
@@ -353,8 +353,8 @@ export function createFederationInstance(mongoClient: MongoClient) {
         
         // Remove follow relationship
         const result = await follows.deleteOne({
-          followerId: from.id?.href,
-          followingId: targetUser._id?.toString()
+          follower_id: from.id?.href,
+          following_id: targetUser._id?.toString()
         });
         
         if (result.deletedCount > 0) {
@@ -418,8 +418,8 @@ export function createFederationInstance(mongoClient: MongoClient) {
         
         // Remove follow relationship if it exists
         const result = await follows.deleteOne({
-          followerId: from.id?.href,
-          followingId: targetUser._id?.toString()
+          follower_id: from.id?.href,
+          following_id: targetUser._id?.toString()
         });
         
         if (result.deletedCount > 0) {
