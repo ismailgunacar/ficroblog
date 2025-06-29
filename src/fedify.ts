@@ -1,15 +1,16 @@
-import { createFederation, MemoryKvStore, Person, Note, Follow, Accept, Create, Like, Announce, Image } from '@fedify/fedify';
+import { createFederation, MemoryKvStore, Person, Note, Follow, Accept, Create, Like, Announce, Image, Undo, Reject, NodeInfo } from '@fedify/fedify';
 import { federation as fedifyHonoMiddleware } from '@fedify/fedify/x/hono';
 import type { Hono } from 'hono';
 import type { User, Post } from './models';
 import { ObjectId } from 'mongodb';
+import type { MongoClient, Collection } from 'mongodb';
 
 // MongoDB-based KV store for Fedify
 class MongoDBKVStore {
   private db: any;
-  private collection: any;
+  private collection: Collection;
 
-  constructor(client: any, dbName: string) {
+  constructor(client: MongoClient, dbName: string) {
     this.db = client.db(dbName);
     this.collection = this.db.collection('fedify_kv');
   }
@@ -36,7 +37,7 @@ class MongoDBKVStore {
 }
 
 // Export a function to create and configure the federation instance
-export function createFederationInstance(mongoClient: any) {
+export function createFederationInstance(mongoClient: MongoClient) {
   console.log('🔧 Creating Fedify federation instance...');
   
   // Create the Federation instance with full configuration
@@ -51,7 +52,7 @@ export function createFederationInstance(mongoClient: any) {
   console.log('✅ Fedify federation instance created');
 
   // Set up NodeInfo dispatcher
-  federation.setNodeInfoDispatcher('/.well-known/nodeinfo/2.0', async (ctx) => {
+  federation.setNodeInfoDispatcher('/.well-known/nodeinfo/2.0', async (ctx): Promise<NodeInfo> => {
     console.log('📊 NodeInfo request received');
     const db = mongoClient.db('fongoblog2');
     const users = db.collection('users');
@@ -66,7 +67,7 @@ export function createFederationInstance(mongoClient: any) {
       version: '2.0',
       software: {
         name: 'fongoblog2',
-        version: '1.0.0'
+        version: { major: 1, minor: 0, patch: 0 }
       },
       protocols: ['activitypub'],
       services: {
@@ -78,7 +79,8 @@ export function createFederationInstance(mongoClient: any) {
         users: {
           total: userCount
         },
-        localPosts: postCount
+        localPosts: postCount,
+        localComments: 0
       },
       metadata: {
         nodeName: 'fongoblog2',
@@ -178,7 +180,7 @@ export function createFederationInstance(mongoClient: any) {
     const domain = ctx.hostname;
     console.log(`✅ Outbox: ${userPosts.length} posts for ${identifier}`);
     
-    const activities = userPosts.map(post => new Create({
+    const activities = userPosts.map((post: any) => new Create({
       id: new URL(`https://${domain}/posts/${post._id}/activity`),
       actor: new URL(`https://${domain}/users/${user.username}`),
       object: new Note({
@@ -267,14 +269,14 @@ export function createFederationInstance(mongoClient: any) {
       // Send Accept activity back
       console.log('📤 Sending Accept activity...');
       const accept = new Accept({
-        actor: new URL(`https://${ctx.hostname}/users/${username}`),
+        actorId: new URL(`https://${ctx.hostname}/users/${username}`),
         object: follow,
         to: [from.id?.href || ''],
         cc: ['https://www.w3.org/ns/activitystreams#Public']
       });
       
       console.log('📋 Accept activity details:', {
-        actor: accept.actor?.href,
+        actor: accept.actorId?.href,
         object: accept.objectId?.href,
         to: accept.to,
         cc: accept.cc
@@ -286,6 +288,136 @@ export function createFederationInstance(mongoClient: any) {
         console.log('✅ Accept activity sent successfully');
       } catch (error) {
         console.error('❌ Error sending accept activity:', error);
+      }
+    })
+    .on(Undo, async (ctx, undo) => {
+      console.log('🔄 Undo activity received');
+      console.log('📋 Undo activity details:', {
+        id: undo.id?.href,
+        actor: undo.actorId?.href,
+        object: undo.objectId?.href
+      });
+      
+      const from = await undo.getActor(ctx);
+      if (!from) {
+        console.log('❌ Could not get actor from undo activity');
+        return;
+      }
+      
+      console.log(`👤 Undo from: ${from.id?.href}`);
+      
+      // Get the object being undone
+      const undoneObject = await undo.getObject(ctx);
+      if (!undoneObject) {
+        console.log('❌ Could not get undone object');
+        return;
+      }
+      
+      console.log(`🎯 Undone object type: ${undoneObject.constructor.name}`);
+      
+      // Handle unfollow (Undo of Follow)
+      if (undoneObject instanceof Follow) {
+        console.log('👋 Processing unfollow...');
+        
+        const db = mongoClient.db('fongoblog2');
+        const users = db.collection('users');
+        const follows = db.collection('follows');
+        
+        // Extract username from the follow target
+        const targetUri = undoneObject.objectId?.href;
+        console.log(`🎯 Unfollow target URI: ${targetUri}`);
+        
+        const username = targetUri?.split('/users/')[1];
+        
+        if (!username) {
+          console.log('❌ Could not extract username from unfollow target');
+          return;
+        }
+        
+        console.log(`🎯 Unfollow target username: ${username}`);
+        
+        const targetUser = await users.findOne({ username });
+        if (!targetUser) {
+          console.log(`❌ Target user not found for unfollow: ${username}`);
+          return;
+        }
+        
+        // Remove follow relationship
+        const result = await follows.deleteOne({
+          followerId: from.id?.href,
+          followingId: targetUser._id?.toString()
+        });
+        
+        if (result.deletedCount > 0) {
+          console.log(`✅ Removed follow relationship: ${from.id?.href} -> ${username}`);
+        } else {
+          console.log(`ℹ️ No follow relationship found to remove: ${from.id?.href} -> ${username}`);
+        }
+      }
+    })
+    .on(Reject, async (ctx, reject) => {
+      console.log('❌ Reject activity received');
+      console.log('📋 Reject activity details:', {
+        id: reject.id?.href,
+        actor: reject.actorId?.href,
+        object: reject.objectId?.href
+      });
+      
+      const from = await reject.getActor(ctx);
+      if (!from) {
+        console.log('❌ Could not get actor from reject activity');
+        return;
+      }
+      
+      console.log(`👤 Reject from: ${from.id?.href}`);
+      
+      // Get the object being rejected
+      const rejectedObject = await reject.getObject(ctx);
+      if (!rejectedObject) {
+        console.log('❌ Could not get rejected object');
+        return;
+      }
+      
+      console.log(`🎯 Rejected object type: ${rejectedObject.constructor.name}`);
+      
+      // Handle follow rejection
+      if (rejectedObject instanceof Follow) {
+        console.log('🚫 Processing follow rejection...');
+        
+        const db = mongoClient.db('fongoblog2');
+        const users = db.collection('users');
+        const follows = db.collection('follows');
+        
+        // Extract username from the follow target
+        const targetUri = rejectedObject.objectId?.href;
+        console.log(`🎯 Rejection target URI: ${targetUri}`);
+        
+        const username = targetUri?.split('/users/')[1];
+        
+        if (!username) {
+          console.log('❌ Could not extract username from rejection target');
+          return;
+        }
+        
+        console.log(`🎯 Rejection target username: ${username}`);
+        
+        const targetUser = await users.findOne({ username });
+        if (!targetUser) {
+          console.log(`❌ Target user not found for rejection: ${username}`);
+          return;
+        }
+        
+        // Remove follow relationship if it exists
+        const result = await follows.deleteOne({
+          followerId: from.id?.href,
+          followingId: targetUser._id?.toString()
+        });
+        
+        if (result.deletedCount > 0) {
+          console.log(`✅ Removed follow relationship due to rejection: ${from.id?.href} -> ${username}`);
+        } else {
+          console.log(`ℹ️ No follow relationship found to remove for rejection: ${from.id?.href} -> ${username}`);
+        }
       }
     })
     .on(Create, async (ctx, create) => {
@@ -351,7 +483,7 @@ export function createFederationInstance(mongoClient: any) {
 }
 
 // Export a function to mount Fedify's ActivityPub endpoints into your Hono app
-export function mountFedifyRoutes(app: Hono, mongoClient: any) {
+export function mountFedifyRoutes(app: Hono, mongoClient: MongoClient) {
   console.log('🔗 Mounting Fedify routes...');
   
   const federation = createFederationInstance(mongoClient);
