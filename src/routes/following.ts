@@ -201,18 +201,17 @@ export function mountFollowingRoutes(app: Hono, client: MongoClient) {
         
         console.log('📋 Follow activity:', followActivity);
         
-        // Sign and send the activity
-        const signedRequest = await signRequest(
-          inboxUrl,
-          'POST',
-          JSON.stringify(followActivity),
-          currentUser._id?.toString()
-        );
+        // Send unsigned request for testing
+        console.log(`📤 Sending unsigned follow activity to: ${inboxUrl}`);
         
         const response = await fetch(inboxUrl, {
           method: 'POST',
-          headers: signedRequest.headers,
-          body: signedRequest.body,
+          headers: {
+            'Content-Type': 'application/activity+json',
+            'Accept': 'application/activity+json',
+            'User-Agent': 'fongoblog2/1.0 (ActivityPub)'
+          },
+          body: JSON.stringify(followActivity),
           duplex: 'half'
         });
         
