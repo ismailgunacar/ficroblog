@@ -37,23 +37,30 @@ class MongoDBKVStore {
 
 // Export a function to create and configure the federation instance
 export function createFederationInstance(mongoClient: any) {
+  console.log('🔧 Creating Fedify federation instance...');
+  
   // Create the Federation instance with full configuration
   const kvStore = new MongoDBKVStore(mongoClient, 'fongoblog2');
+  console.log('📦 Created MongoDB KV store for Fedify');
 
   const federation = createFederation({
     kv: kvStore,
     // Allow all domains for now (you can restrict this later)
     skipSignatureVerification: true, // For development only
   });
+  console.log('✅ Fedify federation instance created');
 
   // Set up NodeInfo dispatcher
   federation.setNodeInfoDispatcher('/.well-known/nodeinfo/2.0', async (ctx) => {
+    console.log('📊 NodeInfo request received');
     const db = mongoClient.db('fongoblog2');
     const users = db.collection('users');
     const posts = db.collection('posts');
     
     const userCount = await users.countDocuments();
     const postCount = await posts.countDocuments();
+    
+    console.log(`📈 NodeInfo stats: ${userCount} users, ${postCount} posts`);
     
     return {
       version: '2.0',
@@ -79,16 +86,22 @@ export function createFederationInstance(mongoClient: any) {
       }
     };
   });
+  console.log('📊 NodeInfo dispatcher configured');
 
   // Set up actor dispatcher
   federation.setActorDispatcher('/users/{identifier}', async (ctx, identifier) => {
+    console.log(`👤 Actor request for: ${identifier}`);
     const db = mongoClient.db('fongoblog2');
     const users = db.collection('users');
     
     const user = await users.findOne({ username: identifier });
-    if (!user) return null;
+    if (!user) {
+      console.log(`❌ User not found: ${identifier}`);
+      return null;
+    }
 
     const domain = ctx.hostname;
+    console.log(`✅ Creating actor for ${identifier} on domain ${domain}`);
     
     return new Person({
       id: ctx.getActorUri(identifier),
@@ -104,20 +117,29 @@ export function createFederationInstance(mongoClient: any) {
       image: user.headerUrl ? new Image({ url: new URL(user.headerUrl) }) : undefined
     });
   });
+  console.log('👤 Actor dispatcher configured');
 
   // Set up object dispatcher for posts
   federation.setObjectDispatcher(Note, '/posts/{postId}', async (ctx, { postId }) => {
+    console.log(`📝 Note request for post: ${postId}`);
     const db = mongoClient.db('fongoblog2');
     const posts = db.collection('posts');
     const users = db.collection('users');
     
     const post = await posts.findOne({ _id: new ObjectId(postId) });
-    if (!post) return null;
+    if (!post) {
+      console.log(`❌ Post not found: ${postId}`);
+      return null;
+    }
 
     const author = await users.findOne({ _id: post.userId });
-    if (!author) return null;
+    if (!author) {
+      console.log(`❌ Post author not found for post: ${postId}`);
+      return null;
+    }
 
     const domain = ctx.hostname;
+    console.log(`✅ Creating Note for post ${postId} by ${author.username}`);
     
     return new Note({
       id: new URL(`https://${domain}/posts/${post._id}`),
@@ -128,15 +150,20 @@ export function createFederationInstance(mongoClient: any) {
       updated: post.updatedAt
     });
   });
+  console.log('📝 Note dispatcher configured');
 
   // Set up outbox dispatcher
   federation.setOutboxDispatcher('/users/{identifier}/outbox', async (ctx, identifier, cursor) => {
+    console.log(`📤 Outbox request for: ${identifier}, cursor: ${cursor}`);
     const db = mongoClient.db('fongoblog2');
     const posts = db.collection('posts');
     const users = db.collection('users');
     
     const user = await users.findOne({ username: identifier });
-    if (!user) return null;
+    if (!user) {
+      console.log(`❌ User not found for outbox: ${identifier}`);
+      return null;
+    }
 
     const limit = 20;
     const skip = cursor ? Number.parseInt(cursor, 10) : 0;
@@ -149,6 +176,7 @@ export function createFederationInstance(mongoClient: any) {
       .toArray();
 
     const domain = ctx.hostname;
+    console.log(`✅ Outbox: ${userPosts.length} posts for ${identifier}`);
     
     const activities = userPosts.map(post => new Create({
       id: new URL(`https://${domain}/posts/${post._id}/activity`),
@@ -169,13 +197,20 @@ export function createFederationInstance(mongoClient: any) {
       nextCursor: userPosts.length === limit ? (skip + limit).toString() : null
     };
   });
+  console.log('📤 Outbox dispatcher configured');
 
   // Set up inbox listeners
   federation
     .setInboxListeners('/users/{identifier}/inbox', '/inbox')
     .on(Follow, async (ctx, follow) => {
+      console.log('🤝 Follow activity received');
       const from = await follow.getActor(ctx);
-      if (!from) return;
+      if (!from) {
+        console.log('❌ Could not get actor from follow activity');
+        return;
+      }
+      
+      console.log(`👤 Follow from: ${from.id?.href}`);
       
       const db = mongoClient.db('fongoblog2');
       const users = db.collection('users');
@@ -185,10 +220,18 @@ export function createFederationInstance(mongoClient: any) {
       const targetUri = follow.objectId?.href;
       const username = targetUri?.split('/users/')[1];
       
-      if (!username) return;
+      if (!username) {
+        console.log('❌ Could not extract username from follow target');
+        return;
+      }
+      
+      console.log(`🎯 Follow target: ${username}`);
       
       const targetUser = await users.findOne({ username });
-      if (!targetUser) return;
+      if (!targetUser) {
+        console.log(`❌ Target user not found: ${username}`);
+        return;
+      }
       
       // Check if already following
       const existingFollow = await follows.findOne({
@@ -203,6 +246,9 @@ export function createFederationInstance(mongoClient: any) {
           followingId: targetUser._id?.toString(),
           createdAt: new Date()
         });
+        console.log(`✅ Created follow relationship: ${from.id?.href} -> ${username}`);
+      } else {
+        console.log(`ℹ️ Follow relationship already exists: ${from.id?.href} -> ${username}`);
       }
       
       // Send Accept activity back
@@ -221,82 +267,88 @@ export function createFederationInstance(mongoClient: any) {
       }
     })
     .on(Create, async (ctx, create) => {
-      // Handle incoming posts
+      console.log('📝 Create activity received');
       const from = await create.getActor(ctx);
-      if (!from) return;
+      if (!from) {
+        console.log('❌ Could not get actor from create activity');
+        return;
+      }
       
+      console.log(`👤 Create from: ${from.id?.href}`);
+      
+      const object = await create.getObject(ctx);
+      if (!object || !(object instanceof Note)) {
+        console.log('❌ Create activity does not contain a Note');
+        return;
+      }
+      
+      console.log(`📄 Note content: ${object.content?.substring(0, 100)}...`);
+      
+      // Store the remote post
       const db = mongoClient.db('fongoblog2');
-      const users = db.collection('users');
       const posts = db.collection('posts');
       
-      // Extract username from the actor
-      const username = from.id?.href?.split('/users/')[1];
-      if (!username) return;
+      await posts.insertOne({
+        userId: from.id?.href || 'unknown',
+        content: object.content || '',
+        createdAt: object.published || new Date(),
+        remote: true,
+        remotePostId: object.id?.href,
+        remoteActor: from.id?.href
+      });
       
-      const user = await users.findOne({ username });
-      if (!user) return;
-      
-      // Check if this is a Note
-      const object = await create.getObject(ctx);
-      if (object instanceof Note) {
-        // Store the incoming post
-        await posts.insertOne({
-          userId: user._id,
-          content: object.content || '',
-          createdAt: object.published || new Date(),
-          updatedAt: object.updated || new Date(),
-          federated: true,
-          federatedFrom: from.id?.href
-        });
-      }
+      console.log('✅ Stored remote post');
     })
     .on(Like, async (ctx, like) => {
-      // Handle incoming likes
+      console.log('❤️ Like activity received');
       const from = await like.getActor(ctx);
-      if (!from) return;
-      
-      // Extract post ID from the liked object
-      const objectUri = like.objectId?.href;
-      const postId = objectUri?.split('/posts/')[1];
-      
-      if (postId) {
-        const db = mongoClient.db('fongoblog2');
-        const posts = db.collection('posts');
-        
-        // Increment like count
-        await posts.updateOne(
-          { _id: new ObjectId(postId) },
-          { $inc: { likeCount: 1 } }
-        );
+      if (!from) {
+        console.log('❌ Could not get actor from like activity');
+        return;
       }
+      
+      console.log(`👤 Like from: ${from.id?.href}`);
+      console.log(`🎯 Like target: ${like.objectId?.href}`);
     })
     .on(Announce, async (ctx, announce) => {
-      // Handle incoming reposts/boosts
+      console.log('🔄 Announce activity received');
       const from = await announce.getActor(ctx);
-      if (!from) return;
-      
-      // Extract post ID from the announced object
-      const objectUri = announce.objectId?.href;
-      const postId = objectUri?.split('/posts/')[1];
-      
-      if (postId) {
-        const db = mongoClient.db('fongoblog2');
-        const posts = db.collection('posts');
-        
-        // Increment repost count
-        await posts.updateOne(
-          { _id: new ObjectId(postId) },
-          { $inc: { repostCount: 1 } }
-        );
+      if (!from) {
+        console.log('❌ Could not get actor from announce activity');
+        return;
       }
+      
+      console.log(`👤 Announce from: ${from.id?.href}`);
+      console.log(`🎯 Announce target: ${announce.objectId?.href}`);
     });
 
+  console.log('📥 Inbox listeners configured');
+  console.log('🎉 Fedify federation instance fully configured!');
+  
   return federation;
 }
 
 // Export a function to mount Fedify's ActivityPub endpoints into your Hono app
 export function mountFedifyRoutes(app: Hono, mongoClient: any) {
+  console.log('🔗 Mounting Fedify routes...');
+  
   const federation = createFederationInstance(mongoClient);
-  // Mount the Fedify federation middleware at root
-  app.use('*', fedifyHonoMiddleware(federation, () => ({})));
+  
+  // Mount Fedify routes
+  app.use('*', async (c, next) => {
+    // Log all requests to Fedify endpoints
+    const url = c.req.url;
+    if (url.includes('/.well-known/') || 
+        url.includes('/users/') || 
+        url.includes('/inbox') ||
+        url.includes('/outbox') ||
+        url.includes('/followers') ||
+        url.includes('/following')) {
+      console.log(`🌐 Fedify request: ${c.req.method} ${url}`);
+    }
+    await next();
+  });
+  
+  app.use('*', federation.hono);
+  console.log('✅ Fedify routes mounted successfully');
 } 
