@@ -435,7 +435,8 @@ export async function signRequest(url: string, method: string, body?: string, us
     const signatureParts = [
       `(request-target): ${method.toLowerCase()} ${new URL(url).pathname}`,
       `host: ${new URL(url).host}`,
-      `date: ${date}`
+      `date: ${date}`,
+      `content-type: application/activity+json`
     ];
 
     if (digestHeader) {
