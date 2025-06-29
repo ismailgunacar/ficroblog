@@ -204,6 +204,13 @@ export function createFederationInstance(mongoClient: any) {
     .setInboxListeners('/users/{identifier}/inbox', '/inbox')
     .on(Follow, async (ctx, follow) => {
       console.log('🤝 Follow activity received');
+      console.log('📋 Follow activity details:', {
+        id: follow.id?.href,
+        actor: follow.actorId?.href,
+        object: follow.objectId?.href,
+        target: follow.targetId?.href
+      });
+      
       const from = await follow.getActor(ctx);
       if (!from) {
         console.log('❌ Could not get actor from follow activity');
@@ -218,31 +225,37 @@ export function createFederationInstance(mongoClient: any) {
       
       // Extract username from the follow target
       const targetUri = follow.objectId?.href;
+      console.log(`🎯 Target URI: ${targetUri}`);
+      
       const username = targetUri?.split('/users/')[1];
       
       if (!username) {
         console.log('❌ Could not extract username from follow target');
+        console.log('🔍 Available parts:', targetUri?.split('/'));
         return;
       }
       
-      console.log(`🎯 Follow target: ${username}`);
+      console.log(`🎯 Follow target username: ${username}`);
       
       const targetUser = await users.findOne({ username });
       if (!targetUser) {
         console.log(`❌ Target user not found: ${username}`);
+        console.log('🔍 Available users:', await users.find({}).toArray());
         return;
       }
       
+      console.log(`✅ Found target user: ${targetUser.username}`);
+      
       // Check if already following
       const existingFollow = await follows.findOne({
-        followerId: from.id?.href?.split('/users/')[1],
+        followerId: from.id?.href,
         followingId: targetUser._id?.toString()
       });
       
       if (!existingFollow) {
         // Create follow relationship
         await follows.insertOne({
-          followerId: from.id?.href?.split('/users/')[1],
+          followerId: from.id?.href,
           followingId: targetUser._id?.toString(),
           createdAt: new Date()
         });
@@ -252,6 +265,7 @@ export function createFederationInstance(mongoClient: any) {
       }
       
       // Send Accept activity back
+      console.log('📤 Sending Accept activity...');
       const accept = new Accept({
         actor: new URL(`https://${ctx.hostname}/users/${username}`),
         object: follow,
@@ -259,11 +273,19 @@ export function createFederationInstance(mongoClient: any) {
         cc: ['https://www.w3.org/ns/activitystreams#Public']
       });
       
+      console.log('📋 Accept activity details:', {
+        actor: accept.actor?.href,
+        object: accept.objectId?.href,
+        to: accept.to,
+        cc: accept.cc
+      });
+      
       // Send the accept activity
       try {
-        await ctx.sendActivity({ username }, [from.id?.href || ''], accept);
+        await ctx.sendActivity({ identifier: username }, [from.id?.href || ''], accept);
+        console.log('✅ Accept activity sent successfully');
       } catch (error) {
-        console.error('Error sending accept activity:', error);
+        console.error('❌ Error sending accept activity:', error);
       }
     })
     .on(Create, async (ctx, create) => {

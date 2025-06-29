@@ -2115,8 +2115,12 @@ app.post('/logout', async (c) => {
 
 // WebFinger endpoint
 app.get('/.well-known/webfinger', async (c) => {
+  console.log('🔍 WebFinger request received');
   const resource = c.req.query('resource');
+  console.log('📋 Resource:', resource);
+  
   if (!resource || !resource.startsWith('acct:')) {
+    console.log('❌ Invalid resource format');
     return c.json({ error: 'Invalid resource' }, 400);
   }
   
@@ -2124,7 +2128,10 @@ app.get('/.well-known/webfinger', async (c) => {
   const domain = resource.replace('acct:', '').split('@')[1];
   const currentDomain = getDomainFromRequest(c);
   
+  console.log('🔍 Parsed:', { username, domain, currentDomain });
+  
   if (domain !== currentDomain) {
+    console.log('❌ Domain mismatch:', domain, '!=', currentDomain);
     return c.json({ error: 'Domain mismatch' }, 400);
   }
   
@@ -2134,19 +2141,36 @@ app.get('/.well-known/webfinger', async (c) => {
   const user = await users.findOne({ username });
   
   if (!user) {
+    console.log('❌ User not found:', username);
     return c.json({ error: 'User not found' }, 404);
   }
   
-  return c.json({
+  console.log('✅ User found:', username);
+  
+  const response = {
     subject: resource,
     links: [
       {
         rel: 'self',
         type: 'application/activity+json',
         href: `https://${currentDomain}/users/${username}`
+      },
+      {
+        rel: 'http://webfinger.net/rel/profile-page',
+        type: 'text/html',
+        href: `https://${currentDomain}/@${username}`
       }
     ]
-  });
+  };
+  
+  console.log('📤 WebFinger response:', response);
+  
+  // Add CORS headers
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  c.header('Access-Control-Allow-Headers', 'Content-Type');
+  
+  return c.json(response);
 });
 
 // NodeInfo endpoint
@@ -2243,7 +2267,7 @@ app.get('/users/:username', async (c) => {
     publicKey: {
       id: `https://${currentDomain}/users/${username}#main-key`,
       owner: `https://${currentDomain}/users/${username}`,
-      publicKeyPem: '-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...\n-----END PUBLIC KEY-----\n'
+      publicKeyPem: user.publicKey || '-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...\n-----END PUBLIC KEY-----\n'
     },
     endpoints: {
       sharedInbox: `https://${currentDomain}/inbox`
@@ -2957,4 +2981,33 @@ app.post('/remote-follow', async (c) => {
       error: `Error following ${remoteUser}: ${error instanceof Error ? error.message : 'Unknown error'}` 
     });
   }
+});
+
+// Test endpoint to verify inbox is working
+app.get('/test-inbox', async (c) => {
+  console.log('🧪 Test inbox endpoint accessed');
+  return c.json({ 
+    message: 'Inbox test endpoint working',
+    timestamp: new Date().toISOString(),
+    inboxUrl: `https://${getDomainFromRequest(c)}/inbox`,
+    userInboxUrl: `https://${getDomainFromRequest(c)}/users/yourusername/inbox`
+  });
+});
+
+// Test endpoint for domain and WebFinger debugging
+app.get('/test-discovery', async (c) => {
+  const domain = getDomainFromRequest(c);
+  const username = 'ismail'; // Your username
+  
+  console.log('🔍 Discovery test for:', { domain, username });
+  
+  return c.json({
+    domain,
+    username,
+    webfingerUrl: `https://${domain}/.well-known/webfinger?resource=acct:${username}@${domain}`,
+    actorUrl: `https://${domain}/users/${username}`,
+    inboxUrl: `https://${domain}/users/${username}/inbox`,
+    outboxUrl: `https://${domain}/users/${username}/outbox`,
+    nodeInfoUrl: `https://${domain}/.well-known/nodeinfo/2.0`
+  });
 });
