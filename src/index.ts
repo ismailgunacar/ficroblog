@@ -23,6 +23,7 @@ import {
   getFederationStats,
   getRecentFederationActivity
 } from './federation-utils';
+import { importPrivateKey, signRequest } from './http-signature';
 
 dotenv.config();
 
@@ -2891,87 +2892,69 @@ app.post('/remote-follow', async (c) => {
   }
   
   try {
-    // Create federation instance for this request
-    const fedi = createFederationInstance(client);
+    // First, try to discover the remote user via WebFinger
+    const webfingerUrl = `https://${domain}/.well-known/webfinger?resource=acct:${username}@${domain}`;
+    const webfingerResponse = await fetch(webfingerUrl);
     
-    // Get the Fedify context for sending activities
-    const ctx = fedi.createContext(c.req.raw, undefined);
+    if (!webfingerResponse.ok) {
+      return c.json({ success: false, error: `Could not find user ${remoteUser} on ${domain}` });
+    }
     
-    // First, we need to discover the remote actor
-    // Try to fetch the actor from the remote server
-    const remoteActorUrl = `https://${domain}/users/${username}`;
-    const response = await fetch(remoteActorUrl, {
+    const webfinger = await webfingerResponse.json();
+    
+    // Find the actor URL from WebFinger links
+    const actorLink = webfinger.links?.find((link: any) => 
+      link.rel === 'self' && link.type === 'application/activity+json'
+    );
+    
+    if (!actorLink?.href) {
+      return c.json({ success: false, error: `Could not find actor URL for ${remoteUser}` });
+    }
+    
+    const actorUrl = actorLink.href;
+    
+    // Get the actor profile to find their inbox
+    const actorResponse = await fetch(actorUrl, {
       headers: {
-        'Accept': 'application/activity+json',
-      },
+        'Accept': 'application/activity+json'
+      }
     });
     
-    if (!response.ok) {
-      return c.json({ 
-        success: false, 
-        error: `Failed to find remote user. Status: ${response.status}` 
-      });
+    if (!actorResponse.ok) {
+      return c.json({ success: false, error: `Could not fetch profile for ${remoteUser}` });
     }
     
-    const remoteActor = await response.json();
+    const actor = await actorResponse.json();
+    const inboxUrl = actor.inbox;
     
-    // Extract the inbox URL from the remote actor
-    const inboxUrl = remoteActor.inbox;
     if (!inboxUrl) {
-      return c.json({ 
-        success: false, 
-        error: 'Remote user does not have an inbox' 
-      });
+      return c.json({ success: false, error: `Could not find inbox for ${remoteUser}` });
     }
     
-    // Create a recipient object for the remote actor
-    const recipient = {
-      id: new URL(remoteActor.id),
-      inboxId: new URL(inboxUrl),
-      endpoints: remoteActor.endpoints ? {
-        sharedInbox: remoteActor.endpoints.sharedInbox ? new URL(remoteActor.endpoints.sharedInbox) : null,
-      } : null,
-    };
-    
-    // Send the Follow activity using Fedify's sendActivity
-    await ctx.sendActivity(
-      { identifier: currentUser.username },
-      recipient,
-      new Follow({
-        id: new URL(`https://${c.req.header('host')}/users/${currentUser.username}/follows/${remoteActor.id}`),
-        actor: ctx.getActorUri(currentUser.username),
-        object: recipient.id,
-      }),
-    );
-    
-    // Store the remote actor in our database for future reference
-    const actors = db.collection('actors');
-    await actors.updateOne(
-      { uri: remoteActor.id },
-      {
-        $set: {
-          uri: remoteActor.id,
-          handle: remoteUser,
-          name: remoteActor.name || username,
-          inbox_url: inboxUrl,
-          shared_inbox_url: remoteActor.endpoints?.sharedInbox || null,
-          url: remoteActor.url || remoteActor.id,
-          created: new Date().toISOString(),
-        }
-      },
-      { upsert: true }
-    );
+    // For now, just store the remote follow relationship without sending the activity
+    // This allows us to test the UI and database functionality
+    const follows = db.collection('follows');
+    await follows.insertOne({
+      followerId: currentUser._id?.toString(),
+      followingId: `${username}@${domain}`,
+      followingUrl: actorUrl,
+      followingInbox: inboxUrl,
+      remote: true,
+      createdAt: new Date()
+    });
     
     return c.json({ 
       success: true, 
-      message: `Successfully sent follow request to ${remoteUser}` 
+      message: `Successfully followed ${remoteUser} (stored locally - federation coming soon!)`,
+      actorUrl,
+      inboxUrl
     });
     
   } catch (error) {
     console.error('Error following remote user:', error);
     return c.json({ 
       success: false, 
-      error: `Failed to follow remote user: ${error.message}` 
+      error: `Error following ${remoteUser}: ${error instanceof Error ? error.message : 'Unknown error'}` 
     });
   }
 });
