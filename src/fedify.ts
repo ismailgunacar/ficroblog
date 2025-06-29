@@ -169,8 +169,8 @@ export function createFederationInstance(mongoClient: MongoClient) {
       console.log(`🔍 Request headers:`, ctx.request?.headers);
       console.log(`✅ Creating actor for ${identifier} on domain ${domain}`);
       
-      // For development, always use localhost:8000
-      const actorDomain = domain.includes('localhost') ? domain : 'localhost:8000';
+      // Use the actual domain from the request context
+      const actorDomain = domain;
       console.log(`🔧 Using actor domain: ${actorDomain}`);
       
       // Create a Fedify Actor object instead of plain JSON
