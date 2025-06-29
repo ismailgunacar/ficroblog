@@ -189,11 +189,22 @@ export function mountFollowingRoutes(app: Hono, client: MongoClient) {
         console.log('📤 Sending Follow activity to remote inbox...');
         
         const currentDomain = getDomainFromRequest(c);
+        console.log('🔍 Current domain from request:', currentDomain);
+        console.log('🔍 Request headers:', {
+          host: c.req.header('host'),
+          'x-forwarded-host': c.req.header('x-forwarded-host'),
+          'x-forwarded-proto': c.req.header('x-forwarded-proto')
+        });
+        
+        // For development, use the correct domain
+        const followDomain = currentDomain.includes('localhost') ? 'gunac.ar' : currentDomain;
+        console.log('🔧 Using follow domain:', followDomain);
+        
         const followActivity = {
           "@context": "https://www.w3.org/ns/activitystreams",
-          "id": `https://${currentDomain}/follows/${followData.followerId}/${followData.followingId}`,
+          "id": `https://${followDomain}/follows/${followData.followerId}/${followData.followingId}`,
           "type": "Follow",
-          "actor": `https://${currentDomain}/users/${currentUser.username}`,
+          "actor": `https://${followDomain}/users/${currentUser.username}`,
           "object": actorUrl,
           "to": [actorUrl],
           "cc": ["https://www.w3.org/ns/activitystreams#Public"]
