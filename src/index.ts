@@ -1,23 +1,26 @@
 import { Hono } from 'hono';
+import { serveStatic } from 'hono/serve-static';
+import { getCookie, setCookie } from 'hono/cookie';
 import { MongoClient, ObjectId } from 'mongodb';
-import * as dotenv from 'dotenv';
-import { serve } from '@hono/node-server';
-import type { User, Post, Follow } from './models';
-import { sessionMiddleware, setSessionCookie, clearSessionCookie } from './session';
 import { hashPassword, verifyPassword } from './auth';
-import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
+import { generateRSAKeyPair } from './keys';
+import { Follow, Create, Note, Person, Accept, Undo, PUBLIC_COLLECTION } from '@fedify/fedify';
+import { Temporal } from '@js-temporal/polyfill';
+import { createFederationInstance } from './fedify';
+import dotenv from 'dotenv';
+import { serve } from '@hono/node-server';
+import type { User, Post } from './models';
+import { sessionMiddleware, setSessionCookie, clearSessionCookie } from './session';
 import { mountFedifyRoutes } from './fedify';
 import { 
-  createFollow, 
-  removeFollow, 
-  isFollowing, 
-  getFollowers, 
+  createFollow,
+  removeFollow,
+  isFollowing,
+  getFollowers,
   getFollowing,
   markPostAsFederated,
-  getFederationStats,
   getFederatedPosts,
+  getFederationStats,
   getRecentFederationActivity
 } from './federation-utils';
 
@@ -1743,7 +1746,8 @@ app.post('/setup', async (c) => {
   const password = typeof body['password'] === 'string' ? body['password'] : '';
   if (!username || !name || !password) return c.text('All fields required', 400);
   const passwordHash = await hashPassword(password);
-  const newUser: User = { username, name, passwordHash, createdAt: new Date() };
+  const { publicKey, privateKey } = generateRSAKeyPair();
+  const newUser: User = { username, name, passwordHash, createdAt: new Date(), publicKey, privateKey };
   const result = await users.insertOne(newUser);
   setCookie(c, 'session', result.insertedId.toString(), { httpOnly: true, path: '/' });
   return c.redirect('/');
@@ -1886,7 +1890,7 @@ app.get('/', async (c) => {
   let followerCount = 0;
   let followingCount = 0;
   if (user && user._id) {
-    postCount = await posts.countDocuments({ userId: user._id.toString() });
+    postCount = await posts.countDocuments({}); // Count all posts, not just user's posts
     followerCount = await follows.countDocuments({ followingId: user._id.toString() });
     followingCount = await follows.countDocuments({ followerId: user._id.toString() });
   }
@@ -2887,95 +2891,87 @@ app.post('/remote-follow', async (c) => {
   }
   
   try {
-    // First, try to discover the remote user via WebFinger
-    const webfingerUrl = `https://${domain}/.well-known/webfinger?resource=acct:${username}@${domain}`;
-    const webfingerResponse = await fetch(webfingerUrl);
+    // Create federation instance for this request
+    const fedi = createFederationInstance(client);
     
-    if (!webfingerResponse.ok) {
-      return c.json({ success: false, error: `Could not find user ${remoteUser} on ${domain}` });
-    }
+    // Get the Fedify context for sending activities
+    const ctx = fedi.createContext(c.req.raw, undefined);
     
-    const webfinger = await webfingerResponse.json();
-    
-    // Find the actor URL from WebFinger links
-    const actorLink = webfinger.links?.find((link: any) => 
-      link.rel === 'self' && link.type === 'application/activity+json'
-    );
-    
-    if (!actorLink?.href) {
-      return c.json({ success: false, error: `Could not find actor URL for ${remoteUser}` });
-    }
-    
-    const actorUrl = actorLink.href;
-    
-    // Get the actor profile to find their inbox
-    const actorResponse = await fetch(actorUrl, {
+    // First, we need to discover the remote actor
+    // Try to fetch the actor from the remote server
+    const remoteActorUrl = `https://${domain}/users/${username}`;
+    const response = await fetch(remoteActorUrl, {
       headers: {
-        'Accept': 'application/activity+json'
-      }
-    });
-    
-    if (!actorResponse.ok) {
-      return c.json({ success: false, error: `Could not fetch profile for ${remoteUser}` });
-    }
-    
-    const actor = await actorResponse.json();
-    const inboxUrl = actor.inbox;
-    
-    if (!inboxUrl) {
-      return c.json({ success: false, error: `Could not find inbox for ${remoteUser}` });
-    }
-    
-    // Create and send the Follow activity
-    const followActivity = {
-      "@context": "https://www.w3.org/ns/activitystreams",
-      "type": "Follow",
-      "actor": `https://${getDomainFromRequest(c)}/users/${currentUser.username}`,
-      "object": actorUrl,
-      "to": [actorUrl],
-      "cc": ["https://www.w3.org/ns/activitystreams#Public"]
-    };
-    
-    // Send the Follow activity to the remote user's inbox
-    const followResponse = await fetch(inboxUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/activity+json',
-        'Accept': 'application/activity+json'
+        'Accept': 'application/activity+json',
       },
-      body: JSON.stringify(followActivity)
     });
     
-    if (followResponse.ok) {
-      // Store the remote follow relationship in our database
-      const follows = db.collection('follows');
-      await follows.insertOne({
-        followerId: currentUser._id?.toString(),
-        followingId: `${username}@${domain}`,
-        followingUrl: actorUrl,
-        followingInbox: inboxUrl,
-        remote: true,
-        createdAt: new Date()
-      });
-      
-      return c.json({ 
-        success: true, 
-        message: `Successfully sent follow request to ${remoteUser}`,
-        actorUrl,
-        inboxUrl
-      });
-    } else {
+    if (!response.ok) {
       return c.json({ 
         success: false, 
-        error: `Failed to send follow request to ${remoteUser}. Status: ${followResponse.status}` 
+        error: `Failed to find remote user. Status: ${response.status}` 
       });
     }
+    
+    const remoteActor = await response.json();
+    
+    // Extract the inbox URL from the remote actor
+    const inboxUrl = remoteActor.inbox;
+    if (!inboxUrl) {
+      return c.json({ 
+        success: false, 
+        error: 'Remote user does not have an inbox' 
+      });
+    }
+    
+    // Create a recipient object for the remote actor
+    const recipient = {
+      id: new URL(remoteActor.id),
+      inboxId: new URL(inboxUrl),
+      endpoints: remoteActor.endpoints ? {
+        sharedInbox: remoteActor.endpoints.sharedInbox ? new URL(remoteActor.endpoints.sharedInbox) : null,
+      } : null,
+    };
+    
+    // Send the Follow activity using Fedify's sendActivity
+    await ctx.sendActivity(
+      { identifier: currentUser.username },
+      recipient,
+      new Follow({
+        id: new URL(`https://${c.req.header('host')}/users/${currentUser.username}/follows/${remoteActor.id}`),
+        actor: ctx.getActorUri(currentUser.username),
+        object: recipient.id,
+      }),
+    );
+    
+    // Store the remote actor in our database for future reference
+    const actors = db.collection('actors');
+    await actors.updateOne(
+      { uri: remoteActor.id },
+      {
+        $set: {
+          uri: remoteActor.id,
+          handle: remoteUser,
+          name: remoteActor.name || username,
+          inbox_url: inboxUrl,
+          shared_inbox_url: remoteActor.endpoints?.sharedInbox || null,
+          url: remoteActor.url || remoteActor.id,
+          created: new Date().toISOString(),
+        }
+      },
+      { upsert: true }
+    );
+    
+    return c.json({ 
+      success: true, 
+      message: `Successfully sent follow request to ${remoteUser}` 
+    });
     
   } catch (error) {
     console.error('Error following remote user:', error);
     return c.json({ 
       success: false, 
-      error: `Error following ${remoteUser}: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      error: `Failed to follow remote user: ${error.message}` 
     });
   }
 });
