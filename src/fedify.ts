@@ -517,44 +517,15 @@ export function mountFedifyRoutes(app: Hono, mongoClient: MongoClient) {
   
   const federation = createFederationInstance(mongoClient);
   
-  // Mount Fedify routes more specifically
-  app.use('/.well-known/*', async (c, next) => {
-    console.log(`🌐 Fedify well-known request: ${c.req.method} ${c.req.url}`);
-    await next();
-  });
-  
-  app.use('/users/*', async (c, next) => {
-    console.log(`🌐 Fedify users request: ${c.req.method} ${c.req.url}`);
-    await next();
-  });
-  
-  app.use('/inbox', async (c, next) => {
-    console.log(`🌐 Fedify inbox request: ${c.req.method} ${c.req.url}`);
-    await next();
-  });
-  
-  app.use('/outbox', async (c, next) => {
-    console.log(`🌐 Fedify outbox request: ${c.req.method} ${c.req.url}`);
-    await next();
-  });
-  
-  app.use('/followers', async (c, next) => {
-    console.log(`🌐 Fedify followers request: ${c.req.method} ${c.req.url}`);
-    await next();
-  });
-  
-  app.use('/following', async (c, next) => {
-    console.log(`🌐 Fedify following request: ${c.req.method} ${c.req.url}`);
-    await next();
-  });
-  
-  // Mount Fedify federation middleware only on ActivityPub routes
+  // Mount Fedify federation middleware only on specific ActivityPub routes
+  // Use more specific paths to avoid conflicts with custom routes
   app.use('/.well-known/*', federation.hono);
-  app.use('/users/*', federation.hono);
+  app.use('/users/*/outbox', federation.hono);
+  app.use('/users/*/inbox', federation.hono);
+  app.use('/users/*/followers', federation.hono);
+  app.use('/users/*/following', federation.hono);
   app.use('/inbox', federation.hono);
   app.use('/outbox', federation.hono);
-  app.use('/followers', federation.hono);
-  app.use('/following', federation.hono);
   
   console.log('✅ Fedify routes mounted successfully');
 } 

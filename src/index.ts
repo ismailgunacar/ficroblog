@@ -332,13 +332,13 @@ app.get('/federation-health', async (c) => {
   });
 });
 
-// Mount Fedify ActivityPub routes FIRST (before custom routes)
-mountFedifyRoutes(app, client);
-
-// Mount modular routes AFTER Fedify routes
+// Mount modular routes FIRST (before Fedify routes to avoid conflicts)
 mountAuthRoutes(app, client);
 mountPostRoutes(app, client);
 mountFollowingRoutes(app, client);
+
+// Mount Fedify ActivityPub routes AFTER custom routes
+mountFedifyRoutes(app, client);
 
 // Start server
 serve({ fetch: app.fetch, port: 8000 });
