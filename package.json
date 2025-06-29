@@ -11,6 +11,7 @@
     "migrate": "tsx migrate-posts.ts"
   },
   "dependencies": {
+    "@fedify/fedify": "^1.7.0",
     "@hono/node-server": "^1.14.4",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.5",

@@ -8,6 +8,18 @@ import { hashPassword, verifyPassword } from './auth';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { mountFedifyRoutes } from './fedify';
+import { 
+  createFollow, 
+  removeFollow, 
+  isFollowing, 
+  getFollowers, 
+  getFollowing,
+  markPostAsFederated,
+  getFederationStats,
+  getFederatedPosts,
+  getRecentFederationActivity
+} from './federation-utils';
 
 dotenv.config();
 
@@ -23,6 +35,7 @@ if (!mongoUri) {
 }
 
 const client = new MongoClient(mongoUri);
+export { client };
 
 // Function to get domain from request context
 function getDomainFromRequest(c: { req: { header: (name: string) => string | undefined } }): string {
@@ -1803,6 +1816,11 @@ app.post('/', async (c) => {
   const content = typeof body['content'] === 'string' ? body['content'] : '';
   if (!content) return c.redirect('/');
   const result = await posts.insertOne({ userId: loggedInUser._id, content, createdAt: new Date() });
+  
+  // Mark the post as federated
+  const domain = getDomainFromRequest(c);
+  await markPostAsFederated(result.insertedId.toString());
+  
   return c.redirect('/');
 });
 
@@ -1831,7 +1849,6 @@ app.post('/user/:username/follow', async (c) => {
   await client.connect();
   const db = client.db();
   const users = db.collection<User>('users');
-  const follows = db.collection<Follow>('follows');
   
   const session = getCookie(c, 'session');
   if (!session || session.length !== 24 || !/^[a-fA-F0-9]+$/.test(session)) {
@@ -1853,23 +1870,17 @@ app.post('/user/:username/follow', async (c) => {
     return c.json({ success: false, error: 'Cannot follow yourself' });
   }
   
-  const existingFollow = await follows.findOne({ 
-    followerId: currentUser._id?.toString(), 
-    followingId: profileUser._id?.toString() 
-  });
+  const isCurrentlyFollowing = await isFollowing(currentUser.username || '', username);
   
-  if (existingFollow) {
+  if (isCurrentlyFollowing) {
     // Unfollow
-    await follows.deleteOne({ _id: existingFollow._id });
+    await removeFollow(currentUser.username || '', username);
     return c.json({ success: true, following: false });
   }
   
   // Follow
-  await follows.insertOne({
-    followerId: currentUser._id?.toString() || '',
-    followingId: profileUser._id?.toString() || '',
-    createdAt: new Date()
-  });
+  const domain = getDomainFromRequest(c);
+  await createFollow(currentUser.username || '', username);
   return c.json({ success: true, following: true });
 });
 
@@ -1878,7 +1889,6 @@ app.post('/@:username/follow', async (c) => {
   await client.connect();
   const db = client.db();
   const users = db.collection<User>('users');
-  const follows = db.collection<Follow>('follows');
   
   const session = getCookie(c, 'session');
   if (!session || session.length !== 24 || !/^[a-fA-F0-9]+$/.test(session)) {
@@ -1900,23 +1910,17 @@ app.post('/@:username/follow', async (c) => {
     return c.json({ success: false, error: 'Cannot follow yourself' });
   }
   
-  const existingFollow = await follows.findOne({ 
-    followerId: currentUser._id?.toString(), 
-    followingId: profileUser._id?.toString() 
-  });
+  const isCurrentlyFollowing = await isFollowing(currentUser.username || '', username);
   
-  if (existingFollow) {
+  if (isCurrentlyFollowing) {
     // Unfollow
-    await follows.deleteOne({ _id: existingFollow._id });
+    await removeFollow(currentUser.username || '', username);
     return c.json({ success: true, following: false });
   }
   
   // Follow
-  await follows.insertOne({
-    followerId: currentUser._id?.toString() || '',
-    followingId: profileUser._id?.toString() || '',
-    createdAt: new Date()
-  });
+  const domain = getDomainFromRequest(c);
+  await createFollow(currentUser.username || '', username);
   return c.json({ success: true, following: true });
 });
 
@@ -1946,8 +1950,9 @@ app.get('/.well-known/webfinger', async (c) => {
   
   const username = resource.replace('acct:', '').split('@')[0];
   const domain = resource.replace('acct:', '').split('@')[1];
+  const currentDomain = getDomainFromRequest(c);
   
-  if (domain !== DOMAIN) {
+  if (domain !== currentDomain) {
     return c.json({ error: 'Domain mismatch' }, 400);
   }
   
@@ -1966,7 +1971,7 @@ app.get('/.well-known/webfinger', async (c) => {
       {
         rel: 'self',
         type: 'application/activity+json',
-        href: `https://${DOMAIN}/users/${username}`
+        href: `https://${currentDomain}/users/${username}`
       }
     ]
   });
@@ -1974,11 +1979,12 @@ app.get('/.well-known/webfinger', async (c) => {
 
 // NodeInfo endpoint
 app.get('/.well-known/nodeinfo', async (c) => {
+  const currentDomain = getDomainFromRequest(c);
   return c.json({
     links: [
       {
         rel: 'http://nodeinfo.diaspora.software/ns/schema/2.0',
-        href: `https://${DOMAIN}/.well-known/nodeinfo/2.0`
+        href: `https://${currentDomain}/.well-known/nodeinfo/2.0`
       }
     ]
   });
@@ -2022,6 +2028,7 @@ app.get('/.well-known/nodeinfo/2.0', async (c) => {
 // ActivityPub Actor endpoint
 app.get('/users/:username', async (c) => {
   const username = c.req.param('username');
+  const currentDomain = getDomainFromRequest(c);
   
   await client.connect();
   const db = client.db();
@@ -2043,12 +2050,12 @@ app.get('/users/:username', async (c) => {
       'https://www.w3.org/ns/activitystreams',
       'https://w3id.org/security/v1'
     ],
-    id: `https://${DOMAIN}/users/${username}`,
+    id: `https://${currentDomain}/users/${username}`,
     type: 'Person',
     preferredUsername: username,
     name: user.name,
     summary: user.bio || '',
-    url: `https://${DOMAIN}/@${username}`,
+    url: `https://${currentDomain}/@${username}`,
     icon: user.avatarUrl ? {
       type: 'Image',
       url: user.avatarUrl
@@ -2057,17 +2064,17 @@ app.get('/users/:username', async (c) => {
       type: 'Image',
       url: user.headerUrl
     } : undefined,
-    inbox: `https://${DOMAIN}/users/${username}/inbox`,
-    outbox: `https://${DOMAIN}/users/${username}/outbox`,
-    followers: `https://${DOMAIN}/users/${username}/followers`,
-    following: `https://${DOMAIN}/users/${username}/following`,
+    inbox: `https://${currentDomain}/users/${username}/inbox`,
+    outbox: `https://${currentDomain}/users/${username}/outbox`,
+    followers: `https://${currentDomain}/users/${username}/followers`,
+    following: `https://${currentDomain}/users/${username}/following`,
     publicKey: {
-      id: `https://${DOMAIN}/users/${username}#main-key`,
-      owner: `https://${DOMAIN}/users/${username}`,
+      id: `https://${currentDomain}/users/${username}#main-key`,
+      owner: `https://${currentDomain}/users/${username}`,
       publicKeyPem: '-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...\n-----END PUBLIC KEY-----\n'
     },
     endpoints: {
-      sharedInbox: `https://${DOMAIN}/inbox`
+      sharedInbox: `https://${currentDomain}/inbox`
     },
     attachment: [
       {
@@ -2094,6 +2101,7 @@ app.get('/users/:username', async (c) => {
 // ActivityPub Outbox - serves user's public activities
 app.get('/users/:username/outbox', async (c) => {
   const username = c.req.param('username');
+  const currentDomain = getDomainFromRequest(c);
   
   await client.connect();
   const db = client.db();
@@ -2111,67 +2119,49 @@ app.get('/users/:username/outbox', async (c) => {
   // Convert posts to ActivityPub Create activities
   const activities = userPosts.map(post => ({
     "@context": "https://www.w3.org/ns/activitystreams",
-    "id": `https://${DOMAIN}/users/${username}/statuses/${post._id}`,
+    "id": `https://${currentDomain}/users/${username}/statuses/${post._id}`,
     "type": "Create",
-    "actor": `https://${DOMAIN}/users/${username}`,
+    "actor": `https://${currentDomain}/users/${username}`,
     "published": post.createdAt,
     "to": ["https://www.w3.org/ns/activitystreams#Public"],
-    "cc": [`https://${DOMAIN}/users/${username}/followers`],
+    "cc": [`https://${currentDomain}/users/${username}/followers`],
     "object": {
       "@context": "https://www.w3.org/ns/activitystreams",
-      "id": `https://${DOMAIN}/users/${username}/statuses/${post._id}`,
+      "id": `https://${currentDomain}/users/${username}/statuses/${post._id}`,
       "type": "Note",
       "summary": null,
       "content": post.content,
       "inReplyTo": null,
       "published": post.createdAt,
-      "url": `https://${DOMAIN}/users/${username}/statuses/${post._id}`,
-      "attributedTo": `https://${DOMAIN}/users/${username}`,
+      "url": `https://${currentDomain}/users/${username}/statuses/${post._id}`,
+      "attributedTo": `https://${currentDomain}/users/${username}`,
       "to": ["https://www.w3.org/ns/activitystreams#Public"],
-      "cc": [`https://${DOMAIN}/users/${username}/followers`],
+      "cc": [`https://${currentDomain}/users/${username}/followers`],
       "sensitive": false,
-      "atomUri": `https://${DOMAIN}/users/${username}/statuses/${post._id}`,
+      "atomUri": `https://${currentDomain}/users/${username}/statuses/${post._id}`,
       "inReplyToAtomUri": null,
       "conversation": null,
       "replies": {
-        "id": `https://${DOMAIN}/users/${username}/statuses/${post._id}/replies`,
+        "id": `https://${currentDomain}/users/${username}/statuses/${post._id}/replies`,
         "type": "Collection",
         "first": {
           "type": "CollectionPage",
-          "next": `https://${DOMAIN}/users/${username}/statuses/${post._id}/replies?only_activities=true&page=true`,
-          "partOf": `https://${DOMAIN}/users/${username}/statuses/${post._id}/replies`,
+          "next": `https://${currentDomain}/users/${username}/statuses/${post._id}/replies?only_activities=true&page=true`,
+          "partOf": `https://${currentDomain}/users/${username}/statuses/${post._id}/replies`,
           "items": []
         }
-      },
-      "reblogsCount": 0,
-      "favouritesCount": 0,
-      "favourited": false,
-      "reblogged": false,
-      "muted": false,
-      "bookmarked": false,
-      "pinned": false,
-      "reblog": null,
-      "application": {
-        "name": "fongoblog2",
-        "website": null
-      },
-      "media_attachments": [],
-      "mentions": [],
-      "tags": [],
-      "emojis": [],
-      "card": null,
-      "poll": null
+      }
     }
   }));
   
   const outbox = {
     "@context": "https://www.w3.org/ns/activitystreams",
-    "id": `https://${DOMAIN}/users/${username}/outbox`,
+    "id": `https://${currentDomain}/users/${username}/outbox`,
     "type": "OrderedCollection",
-    "totalItems": userPosts.length,
+    "totalItems": activities.length,
     "orderedItems": activities,
-    "first": `https://${DOMAIN}/users/${username}/outbox?page=true`,
-    "last": `https://${DOMAIN}/users/${username}/outbox?min_id=0&page=true`
+    "first": `https://${currentDomain}/users/${username}/outbox?page=true`,
+    "last": `https://${currentDomain}/users/${username}/outbox?min_id=0&page=true`
   };
   
   return c.json(outbox);
@@ -2181,6 +2171,7 @@ app.get('/users/:username/outbox', async (c) => {
 app.get('/users/:username/statuses/:postId', async (c) => {
   const username = c.req.param('username');
   const postId = c.req.param('postId');
+  const currentDomain = getDomainFromRequest(c);
   
   await client.connect();
   const db = client.db();
@@ -2205,27 +2196,27 @@ app.get('/users/:username/statuses/:postId', async (c) => {
   
   const note = {
     "@context": "https://www.w3.org/ns/activitystreams",
-    "id": `https://${DOMAIN}/users/${username}/statuses/${post._id}`,
+    "id": `https://${currentDomain}/users/${username}/statuses/${post._id}`,
     "type": "Note",
     "summary": null,
     "content": post.content,
     "inReplyTo": null,
     "published": post.createdAt,
-    "url": `https://${DOMAIN}/users/${username}/statuses/${post._id}`,
-    "attributedTo": `https://${DOMAIN}/users/${username}`,
+    "url": `https://${currentDomain}/users/${username}/statuses/${post._id}`,
+    "attributedTo": `https://${currentDomain}/users/${username}`,
     "to": ["https://www.w3.org/ns/activitystreams#Public"],
-    "cc": [`https://${DOMAIN}/users/${username}/followers`],
+    "cc": [`https://${currentDomain}/users/${username}/followers`],
     "sensitive": false,
-    "atomUri": `https://${DOMAIN}/users/${username}/statuses/${post._id}`,
+    "atomUri": `https://${currentDomain}/users/${username}/statuses/${post._id}`,
     "inReplyToAtomUri": null,
     "conversation": null,
     "replies": {
-      "id": `https://${DOMAIN}/users/${username}/statuses/${post._id}/replies`,
+      "id": `https://${currentDomain}/users/${username}/statuses/${post._id}/replies`,
       "type": "Collection",
       "first": {
         "type": "CollectionPage",
-        "next": `https://${DOMAIN}/users/${username}/statuses/${post._id}/replies?only_activities=true&page=true`,
-        "partOf": `https://${DOMAIN}/users/${username}/statuses/${post._id}/replies`,
+        "next": `https://${currentDomain}/users/${username}/statuses/${post._id}/replies?only_activities=true&page=true`,
+        "partOf": `https://${currentDomain}/users/${username}/statuses/${post._id}/replies`,
         "items": []
       }
     },
@@ -2255,6 +2246,7 @@ app.get('/users/:username/statuses/:postId', async (c) => {
 // ActivityPub Inbox - accepts incoming activities
 app.post('/users/:username/inbox', async (c) => {
   const username = c.req.param('username');
+  const currentDomain = getDomainFromRequest(c);
   
   await client.connect();
   const db = client.db();
@@ -2275,7 +2267,7 @@ app.post('/users/:username/inbox', async (c) => {
     const following = body.object;
     
     // Verify this is a follow request for our user
-    if (following === `https://${DOMAIN}/users/${username}`) {
+    if (following === `https://${currentDomain}/users/${username}`) {
       // Extract username from actor URL (simplified - in production you'd want to fetch the actor)
       const actorUrl = new URL(follower);
       const followerUsername = actorUrl.pathname.split('/').pop();
@@ -2293,9 +2285,9 @@ app.post('/users/:username/inbox', async (c) => {
         // Send Accept activity back
         const acceptActivity = {
           "@context": "https://www.w3.org/ns/activitystreams",
-          "id": `https://${DOMAIN}/follows/${Date.now()}`,
+          "id": `https://${currentDomain}/follows/${Date.now()}`,
           "type": "Accept",
-          "actor": `https://${DOMAIN}/users/${username}`,
+          "actor": `https://${currentDomain}/users/${username}`,
           "object": body
         };
         
@@ -2310,7 +2302,7 @@ app.post('/users/:username/inbox', async (c) => {
     const follower = body.actor;
     const following = body.object.object;
     
-    if (following === `https://${DOMAIN}/users/${username}`) {
+    if (following === `https://${currentDomain}/users/${username}`) {
       // Remove the follow relationship
       await follows.deleteOne({
         followerId: follower,
@@ -2337,6 +2329,7 @@ app.post('/inbox', async (c) => {
 // Followers collection
 app.get('/users/:username/followers', async (c) => {
   const username = c.req.param('username');
+  const currentDomain = getDomainFromRequest(c);
   
   await client.connect();
   const db = client.db();
@@ -2352,7 +2345,7 @@ app.get('/users/:username/followers', async (c) => {
   
   const collection = {
     "@context": "https://www.w3.org/ns/activitystreams",
-    "id": `https://${DOMAIN}/users/${username}/followers`,
+    "id": `https://${currentDomain}/users/${username}/followers`,
     "type": "OrderedCollection",
     "totalItems": followers.length,
     "orderedItems": followers.map(f => f.followerId)
@@ -2364,6 +2357,7 @@ app.get('/users/:username/followers', async (c) => {
 // Following collection
 app.get('/users/:username/following', async (c) => {
   const username = c.req.param('username');
+  const currentDomain = getDomainFromRequest(c);
   
   await client.connect();
   const db = client.db();
@@ -2379,7 +2373,7 @@ app.get('/users/:username/following', async (c) => {
   
   const collection = {
     "@context": "https://www.w3.org/ns/activitystreams",
-    "id": `https://${DOMAIN}/users/${username}/following`,
+    "id": `https://${currentDomain}/users/${username}/following`,
     "type": "OrderedCollection",
     "totalItems": following.length,
     "orderedItems": following.map(f => f.followingId)
@@ -2428,6 +2422,9 @@ app.onError((err, c) => {
   console.error('Error:', err);
   return c.text('Internal Server Error', 500);
 });
+
+// --- Mount Fedify ActivityPub routes ---
+mountFedifyRoutes(app, client);
 
 // --- Start the server ---
 serve({ fetch: app.fetch, port: 8000 });
@@ -2567,4 +2564,129 @@ app.post('/post/:postId/repost', async (c) => {
     reposted: true, 
     repostCount: currentRepostCount + 1 
   });
+});
+
+// Federation dashboard
+app.get('/federation', async (c) => {
+  await client.connect();
+  const db = client.db();
+  const users = db.collection<User>('users');
+  
+  const session = getCookie(c, 'session');
+  if (!session || session.length !== 24 || !/^[a-fA-F0-9]+$/.test(session)) {
+    return c.redirect('/');
+  }
+  
+  const loggedInUser = await users.findOne({ _id: new ObjectId(session) });
+  if (!loggedInUser) {
+    return c.redirect('/');
+  }
+  
+  const domain = getDomainFromRequest(c);
+  const stats = await getFederationStats();
+  const recentActivity = await getRecentFederationActivity(10);
+  const federatedPosts = await getFederatedPosts(20, 0);
+  
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Federation Dashboard - fongoblog2</title>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px; }
+        .stat-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .stat-number { font-size: 2em; font-weight: bold; color: #1a73e8; }
+        .stat-label { color: #666; margin-top: 5px; }
+        .section { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .section h2 { margin-top: 0; color: #333; }
+        .post { border-bottom: 1px solid #eee; padding: 15px 0; }
+        .post:last-child { border-bottom: none; }
+        .post-meta { color: #666; font-size: 0.9em; margin-bottom: 5px; }
+        .post-content { margin: 10px 0; }
+        .nav { margin-bottom: 20px; }
+        .nav a { color: #1a73e8; text-decoration: none; }
+        .nav a:hover { text-decoration: underline; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="nav">
+          <a href="/">← Back to Home</a>
+        </div>
+        
+        <div class="header">
+          <h1>🌐 Federation Dashboard</h1>
+          <p>Monitor your ActivityPub federation activity and statistics.</p>
+        </div>
+        
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-number">${stats.totalUsers}</div>
+            <div class="stat-label">Total Users</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number">${stats.totalPosts}</div>
+            <div class="stat-label">Total Posts</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number">${stats.federatedPosts}</div>
+            <div class="stat-label">Federated Posts</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number">${stats.totalFollows}</div>
+            <div class="stat-label">Follow Relationships</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-number">${stats.federationPercentage.toFixed(1)}%</div>
+            <div class="stat-label">Federation Rate</div>
+          </div>
+        </div>
+        
+        <div class="section">
+          <h2>📊 Recent Federation Activity</h2>
+          <div class="post">
+            <div class="post-meta">
+              <strong>Federated Posts:</strong> ${recentActivity.recentPosts.length} recent posts
+            </div>
+          </div>
+          <div class="post">
+            <div class="post-meta">
+              <strong>Follow Activity:</strong> ${recentActivity.recentFollows.length} recent follows
+            </div>
+          </div>
+        </div>
+        
+        <div class="section">
+          <h2>📝 Recent Federated Posts</h2>
+          ${federatedPosts.map(post => `
+            <div class="post">
+              <div class="post-meta">
+                <strong>@${post.user?.username || 'unknown'}</strong> • 
+                ${new Date(post.createdAt).toLocaleString()} • 
+                ${post.federatedFrom ? `Federated from: ${post.federatedFrom}` : 'Local post'}
+              </div>
+              <div class="post-content">${post.content}</div>
+            </div>
+          `).join('')}
+        </div>
+        
+        <div class="section">
+          <h2>🔗 ActivityPub Endpoints</h2>
+          <p><strong>NodeInfo:</strong> <a href="/.well-known/nodeinfo" target="_blank">/.well-known/nodeinfo</a></p>
+          <p><strong>NodeInfo 2.0:</strong> <a href="/.well-known/nodeinfo/2.0" target="_blank">/.well-known/nodeinfo/2.0</a></p>
+          <p><strong>WebFinger:</strong> <a href="/.well-known/webfinger?resource=acct:${loggedInUser.username}@${domain}" target="_blank">/.well-known/webfinger</a></p>
+          <p><strong>User Actor:</strong> <a href="/users/${loggedInUser.username}" target="_blank">/users/${loggedInUser.username}</a></p>
+          <p><strong>User Outbox:</strong> <a href="/users/${loggedInUser.username}/outbox" target="_blank">/users/${loggedInUser.username}/outbox</a></p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+  
+  return c.html(html);
 });
