@@ -265,6 +265,78 @@ export function mountFollowingRoutes(app: Hono, client: MongoClient) {
     }
   });
 
+  // Local unfollow handler
+  app.post('/unfollow', async (c) => {
+    console.log('🔗 Local unfollow request received');
+    
+    await client.connect();
+    const db = client.db();
+    const users = db.collection<User>('users');
+    
+    const session = getCookie(c, 'session');
+    if (!session || session.length !== 24 || !/^[a-fA-F0-9]+$/.test(session)) {
+      return c.json({ success: false, error: 'Not logged in' });
+    }
+    
+    const currentUser = await users.findOne({ _id: new ObjectId(session) });
+    if (!currentUser) {
+      return c.json({ success: false, error: 'User not found' });
+    }
+    
+    // Validate that currentUser has a valid _id
+    if (!currentUser._id) {
+      console.error('Current user has no _id:', currentUser);
+      return c.json({ success: false, error: 'Invalid user data' });
+    }
+    
+    // Parse request body - handle both JSON and form data
+    let userId: string;
+    const contentType = c.req.header('content-type');
+    
+    if (contentType?.includes('application/json')) {
+      const body = await c.req.json();
+      userId = body.userId || '';
+    } else {
+      const body = await c.req.parseBody();
+      userId = typeof body['userId'] === 'string' ? body['userId'] : '';
+    }
+    
+    console.log('🔍 Unfollow request for local user:', userId);
+    
+    if (!userId) {
+      return c.json({ success: false, error: 'User ID is required' });
+    }
+    
+    try {
+      // Remove the local follow relationship
+      const follows = db.collection('follows');
+      const result = await follows.deleteOne({
+        followerId: currentUser._id.toString(),
+        followingId: userId
+      });
+      
+      if (result.deletedCount > 0) {
+        console.log(`✅ Unfollowed local user: ${userId}`);
+        return c.json({ 
+          success: true, 
+          message: `Successfully unfollowed user` 
+        });
+      } else {
+        return c.json({ 
+          success: false, 
+          error: `Not following this user` 
+        });
+      }
+      
+    } catch (error) {
+      console.error('Error unfollowing local user:', error);
+      return c.json({ 
+        success: false, 
+        error: `Error unfollowing user: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      });
+    }
+  });
+
   // Remote unfollow handler
   app.post('/remote-unfollow', async (c) => {
     console.log('🔗 Remote unfollow request received');
@@ -289,8 +361,19 @@ export function mountFollowingRoutes(app: Hono, client: MongoClient) {
       return c.json({ success: false, error: 'Invalid user data' });
     }
     
-    const body = await c.req.parseBody();
-    const remoteUser = typeof body['remoteUser'] === 'string' ? body['remoteUser'] : '';
+    // Parse request body - handle both JSON and form data
+    let remoteUser: string;
+    const contentType = c.req.header('content-type');
+    
+    if (contentType?.includes('application/json')) {
+      const body = await c.req.json();
+      remoteUser = body.remoteUser || '';
+    } else {
+      const body = await c.req.parseBody();
+      remoteUser = typeof body['remoteUser'] === 'string' ? body['remoteUser'] : '';
+    }
+    
+    console.log('🔍 Unfollow request for remote user:', remoteUser);
     
     if (!remoteUser || !remoteUser.includes('@')) {
       return c.json({ success: false, error: 'Invalid remote user format. Use username@domain' });
