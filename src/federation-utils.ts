@@ -405,7 +405,8 @@ export async function signRequest(url: string, method: string, body?: string, us
       method,
       headers: {
         'Content-Type': 'application/activity+json',
-        'Accept': 'application/activity+json'
+        'Accept': 'application/activity+json',
+        'User-Agent': 'fongoblog2/1.0 (ActivityPub)'
       },
       body,
       duplex: 'half'
@@ -429,9 +430,9 @@ export async function signRequest(url: string, method: string, body?: string, us
     // Create the signature
     const date = new Date().toUTCString();
     const digest = body ? await crypto.subtle.digest('SHA-256', new TextEncoder().encode(body)) : null;
-    const digestHeader = digest ? `SHA-256=${btoa(String.fromCharCode(...new Uint8Array(digest)))}` : '';
+    const digestHeader = digest ? `SHA-256=${Buffer.from(digest).toString('base64')}` : '';
 
-    // Create the signature string
+    // Create the signature string - order matters for HTTP signatures
     const signatureParts = [
       `(request-target): ${method.toLowerCase()} ${new URL(url).pathname}`,
       `host: ${new URL(url).host}`,
@@ -480,6 +481,7 @@ export async function signRequest(url: string, method: string, body?: string, us
       headers: {
         'Content-Type': 'application/activity+json',
         'Accept': 'application/activity+json',
+        'User-Agent': 'fongoblog2/1.0 (ActivityPub)',
         'Date': date,
         'Authorization': authorization,
         ...(digestHeader && { 'Digest': digestHeader })
@@ -494,7 +496,8 @@ export async function signRequest(url: string, method: string, body?: string, us
       method,
       headers: {
         'Content-Type': 'application/activity+json',
-        'Accept': 'application/activity+json'
+        'Accept': 'application/activity+json',
+        'User-Agent': 'fongoblog2/1.0 (ActivityPub)'
       },
       body,
       duplex: 'half'
@@ -536,7 +539,8 @@ export async function sendFollowActivity(followerId: string, followingUsername: 
     "type": "Follow",
     "actor": `https://gunac.ar/users/${follower.username}`,
     "object": `https://${followingDomain}/users/${followingUsername}`,
-    "to": [`https://${followingDomain}/users/${followingUsername}`]
+    "to": [`https://${followingDomain}/users/${followingUsername}`],
+    "cc": ["https://www.w3.org/ns/activitystreams#Public"]
   };
 
   console.log(`📝 Follow activity:`, followActivity);
@@ -564,4 +568,4 @@ export async function sendFollowActivity(followerId: string, followingUsername: 
     console.error(`❌ Error sending follow activity:`, error);
     return false;
   }
-} 
+}
