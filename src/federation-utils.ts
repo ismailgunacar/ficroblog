@@ -243,7 +243,10 @@ export async function signRequest(request: {
   console.log('🔍 MongoDB connected');
   
   const db = mongoClient.db('fongoblog2');
+  console.log('🔍 Using database:', db.databaseName);
+  
   const users = db.collection('users');
+  console.log('🔍 Using collection:', users.collectionName);
   
   console.log('🔍 Looking for user in database...');
   const user = await users.findOne({ username });
@@ -253,6 +256,7 @@ export async function signRequest(request: {
     console.log('❌ User not found in database. Available users:');
     const allUsers = await users.find({}).toArray();
     console.log('All users:', allUsers.map(u => ({ username: u.username, _id: u._id })));
+    console.log('🔍 Total users in collection:', allUsers.length);
     throw new Error('User not found');
   }
   
