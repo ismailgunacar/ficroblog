@@ -2772,12 +2772,76 @@ app.post('/remote-follow', async (c) => {
     
     await follows.insertOne(followData);
     
-    return c.json({ 
-      success: true, 
-      message: `Successfully followed ${remoteUser} (stored locally - federation coming soon!)`,
-      actorUrl,
-      inboxUrl
-    });
+    // Send the actual Follow activity to the remote user's inbox
+    try {
+      console.log('📤 Sending Follow activity to remote inbox...');
+      
+      const currentDomain = getDomainFromRequest(c);
+      const followActivity = {
+        "@context": "https://www.w3.org/ns/activitystreams",
+        "id": `https://${currentDomain}/follows/${followData.follower_id}/${followData.following_id}`,
+        "type": "Follow",
+        "actor": `https://${currentDomain}/users/${currentUser.username}`,
+        "object": actorUrl,
+        "to": [actorUrl],
+        "cc": ["https://www.w3.org/ns/activitystreams#Public"]
+      };
+      
+      console.log('📋 Follow activity:', followActivity);
+      
+      // Sign and send the activity
+      const signedRequest = await signRequest({
+        method: 'POST',
+        url: inboxUrl,
+        body: JSON.stringify(followActivity),
+        headers: {
+          'Content-Type': 'application/activity+json',
+          'Accept': 'application/activity+json'
+        }
+      }, currentUser.username);
+      
+      const response = await fetch(inboxUrl, {
+        method: 'POST',
+        headers: signedRequest.headers,
+        body: signedRequest.body
+      });
+      
+      if (response.ok) {
+        console.log('✅ Follow activity sent successfully to remote inbox');
+        return c.json({ 
+          success: true, 
+          message: `Successfully followed ${remoteUser}! Follow activity sent to their inbox.`,
+          actorUrl,
+          inboxUrl,
+          followActivityId: followActivity.id
+        });
+      } else {
+        console.error('❌ Failed to send follow activity:', response.status, response.statusText);
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+        
+        // Still return success since we stored it locally
+        return c.json({ 
+          success: true, 
+          message: `Followed ${remoteUser} locally, but failed to send activity to their inbox (${response.status})`,
+          actorUrl,
+          inboxUrl,
+          warning: 'Activity not delivered to remote server'
+        });
+      }
+      
+    } catch (federationError) {
+      console.error('❌ Error sending follow activity:', federationError);
+      
+      // Still return success since we stored it locally
+      return c.json({ 
+        success: true, 
+        message: `Followed ${remoteUser} locally, but failed to send activity to their inbox`,
+        actorUrl,
+        inboxUrl,
+        warning: 'Activity not delivered due to error'
+      });
+    }
     
   } catch (error) {
     console.error('Error following remote user:', error);
