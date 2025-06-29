@@ -15,10 +15,16 @@ import type { User, Post, Follow } from './models';
 // Load environment variables from .env file
 dotenv.config();
 
+// Debug: Log the MongoDB URI being used
+console.log('🔍 Environment check:');
+console.log('MONGODB_URI:', process.env.MONGODB_URI ? 'Set' : 'Not set');
+console.log('NODE_ENV:', process.env.NODE_ENV || 'Not set');
+
 const app = new Hono();
 
 // MongoDB connection
 const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/fongoblog2';
+console.log('🔗 Using MongoDB URI:', mongoUri.substring(0, 20) + '...');
 export const client = new MongoClient(mongoUri);
 
 // Homepage route
