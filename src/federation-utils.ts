@@ -1,4 +1,3 @@
-import { client as mongoClient } from './index';
 import { ObjectId } from 'mongodb';
 import type { MongoClient } from 'mongodb';
 import type { User, Follow } from './models';
@@ -9,8 +8,8 @@ import { getUserKeys } from './keys';
 /**
  * Get federated posts from the database
  */
-export async function getFederatedPosts(limit = 20, skip = 0) {
-  const db = mongoClient.db();
+export async function getFederatedPosts(client: MongoClient, limit = 20, skip = 0) {
+  const db = client.db();
   const posts = db.collection('posts');
   const users = db.collection('users');
 
@@ -42,8 +41,8 @@ export async function getFederatedPosts(limit = 20, skip = 0) {
 /**
  * Get followers for a user
  */
-export async function getFollowers(username: string) {
-  const db = mongoClient.db();
+export async function getFollowers(client: MongoClient, username: string) {
+  const db = client.db();
   const users = db.collection('users');
   const follows = db.collection('follows');
 
@@ -52,7 +51,7 @@ export async function getFollowers(username: string) {
 
   const followers = await follows.find({ following_id: user._id?.toString() }).toArray();
   
-  return followers.map(f => ({
+  return followers.map((f: any) => ({
     follower_id: f.follower_id,
     createdAt: f.createdAt
   }));
@@ -61,8 +60,8 @@ export async function getFollowers(username: string) {
 /**
  * Get users that a user is following
  */
-export async function getFollowing(username: string) {
-  const db = mongoClient.db();
+export async function getFollowing(client: MongoClient, username: string) {
+  const db = client.db();
   const users = db.collection('users');
   const follows = db.collection('follows');
 
@@ -71,7 +70,7 @@ export async function getFollowing(username: string) {
 
   const following = await follows.find({ follower_id: user._id?.toString() }).toArray();
   
-  return following.map(f => ({
+  return following.map((f: any) => ({
     following_id: f.following_id,
     createdAt: f.createdAt
   }));
@@ -80,8 +79,8 @@ export async function getFollowing(username: string) {
 /**
  * Check if a user is following another user
  */
-export async function isFollowing(followerUsername: string, followingUsername: string) {
-  const db = mongoClient.db();
+export async function isFollowing(client: MongoClient, followerUsername: string, followingUsername: string) {
+  const db = client.db();
   const users = db.collection('users');
   const follows = db.collection('follows');
 
@@ -101,8 +100,8 @@ export async function isFollowing(followerUsername: string, followingUsername: s
 /**
  * Create a follow relationship
  */
-export async function createFollow(followerUsername: string, followingUsername: string) {
-  const db = mongoClient.db();
+export async function createFollow(client: MongoClient, followerUsername: string, followingUsername: string) {
+  const db = client.db();
   const users = db.collection('users');
   const follows = db.collection('follows');
 
@@ -138,8 +137,8 @@ export async function createFollow(followerUsername: string, followingUsername: 
 /**
  * Remove a follow relationship
  */
-export async function removeFollow(followerUsername: string, followingUsername: string) {
-  const db = mongoClient.db();
+export async function removeFollow(client: MongoClient, followerUsername: string, followingUsername: string) {
+  const db = client.db();
   const users = db.collection('users');
   const follows = db.collection('follows');
 
@@ -163,8 +162,8 @@ export async function removeFollow(followerUsername: string, followingUsername: 
 /**
  * Mark a post as federated and store federation metadata
  */
-export async function markPostAsFederated(postId: string, federatedFrom?: string) {
-  const db = mongoClient.db();
+export async function markPostAsFederated(client: MongoClient, postId: string, federatedFrom?: string) {
+  const db = client.db();
   const posts = db.collection('posts');
 
   await posts.updateOne(
@@ -184,8 +183,8 @@ export async function markPostAsFederated(postId: string, federatedFrom?: string
 /**
  * Get federation statistics
  */
-export async function getFederationStats() {
-  const db = mongoClient.db();
+export async function getFederationStats(client: MongoClient) {
+  const db = client.db();
   const users = db.collection('users');
   const posts = db.collection('posts');
   const follows = db.collection('follows');
@@ -199,16 +198,15 @@ export async function getFederationStats() {
     totalUsers,
     totalPosts,
     federatedPosts,
-    totalFollows,
-    federationPercentage: totalPosts > 0 ? (federatedPosts / totalPosts) * 100 : 0
+    totalFollows
   };
 }
 
 /**
  * Get recent federation activity
  */
-export async function getRecentFederationActivity(limit = 10) {
-  const db = mongoClient.db();
+export async function getRecentFederationActivity(client: MongoClient, limit = 10) {
+  const db = client.db();
   const posts = db.collection('posts');
   const follows = db.collection('follows');
 
@@ -219,7 +217,7 @@ export async function getRecentFederationActivity(limit = 10) {
     .toArray();
 
   const recentFollows = await follows
-    .find({ remote: true })
+    .find({})
     .sort({ createdAt: -1 })
     .limit(limit)
     .toArray();
@@ -243,8 +241,8 @@ function getDatabaseNameFromUri(uri: string): string {
   }
 }
 
-export async function getRemoteUserInfo(username: string, domain: string): Promise<any> {
-  const db = mongoClient.db();
+export async function getRemoteUserInfo(client: MongoClient, username: string, domain: string): Promise<any> {
+  const db = client.db();
   const users = db.collection('users');
   
   // First check if we already have this remote user cached
@@ -308,15 +306,15 @@ export async function getRemoteUserInfo(username: string, domain: string): Promi
   }
 }
 
-export async function createRemoteFollow(followerId: string, followingUsername: string, followingDomain: string): Promise<boolean> {
-  const db = mongoClient.db();
+export async function createRemoteFollow(client: MongoClient, followerId: string, followingUsername: string, followingDomain: string): Promise<boolean> {
+  const db = client.db();
   const follows = db.collection('follows');
   const users = db.collection('users');
 
   console.log(`🔗 Creating remote follow: ${followerId} -> ${followingUsername}@${followingDomain}`);
 
   // Get the remote user info
-  const remoteUser = await getRemoteUserInfo(followingUsername, followingDomain);
+  const remoteUser = await getRemoteUserInfo(client, followingUsername, followingDomain);
   if (!remoteUser) {
     console.log(`❌ Could not get remote user info for ${followingUsername}@${followingDomain}`);
     return false;
@@ -357,8 +355,8 @@ export async function createRemoteFollow(followerId: string, followingUsername: 
   }
 }
 
-export async function removeRemoteFollow(followerId: string, followingUsername: string, followingDomain: string): Promise<boolean> {
-  const db = mongoClient.db();
+export async function removeRemoteFollow(client: MongoClient, followerId: string, followingUsername: string, followingDomain: string): Promise<boolean> {
+  const db = client.db();
   const follows = db.collection('follows');
   const users = db.collection('users');
 
@@ -391,8 +389,8 @@ export async function removeRemoteFollow(followerId: string, followingUsername: 
   }
 }
 
-export async function signRequest(url: string, method: string, body?: string, userId?: string): Promise<Response> {
-  const db = mongoClient.db();
+export async function signRequest(client: MongoClient, url: string, method: string, body?: string, userId?: string): Promise<Response> {
+  const db = client.db();
   const users = db.collection('users');
 
   console.log(`🔐 Signing request: ${method} ${url}`);
@@ -408,8 +406,7 @@ export async function signRequest(url: string, method: string, body?: string, us
         'Accept': 'application/activity+json',
         'User-Agent': 'fongoblog2/1.0 (ActivityPub)'
       },
-      body,
-      duplex: 'half'
+      body
     });
   }
 
@@ -486,8 +483,7 @@ export async function signRequest(url: string, method: string, body?: string, us
         'Authorization': authorization,
         ...(digestHeader && { 'Digest': digestHeader })
       },
-      body,
-      duplex: 'half'
+      body
     });
   } catch (error) {
     console.error(`❌ Error signing request:`, error);
@@ -499,14 +495,13 @@ export async function signRequest(url: string, method: string, body?: string, us
         'Accept': 'application/activity+json',
         'User-Agent': 'fongoblog2/1.0 (ActivityPub)'
       },
-      body,
-      duplex: 'half'
+      body
     });
   }
 }
 
-export async function sendFollowActivity(followerId: string, followingUsername: string, followingDomain: string): Promise<boolean> {
-  const db = mongoClient.db();
+export async function sendFollowActivity(client: MongoClient, followerId: string, followingUsername: string, followingDomain: string): Promise<boolean> {
+  const db = client.db();
   const users = db.collection('users');
   const follows = db.collection('follows');
 
@@ -556,8 +551,7 @@ export async function sendFollowActivity(followerId: string, followingUsername: 
         'Accept': 'application/activity+json',
         'User-Agent': 'fongoblog2/1.0 (ActivityPub)'
       },
-      body: JSON.stringify(followActivity),
-      duplex: 'half'
+      body: JSON.stringify(followActivity)
     });
 
     console.log(`📤 Follow activity response: ${response.status} ${response.statusText}`);

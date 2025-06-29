@@ -211,8 +211,7 @@ export function mountFollowingRoutes(app: Hono, client: MongoClient) {
             'Accept': 'application/activity+json',
             'User-Agent': 'fongoblog2/1.0 (ActivityPub)'
           },
-          body: JSON.stringify(followActivity),
-          duplex: 'half'
+          body: JSON.stringify(followActivity)
         });
         
         if (response.ok) {
