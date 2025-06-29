@@ -240,14 +240,31 @@ export async function signRequest(request: {
   const users = db.collection('users');
   
   const user = await users.findOne({ username });
-  if (!user || !user.privateKey) {
-    throw new Error('User not found or missing private key');
+  if (!user) {
+    throw new Error('User not found');
   }
   
   // For now, return the request as-is since we don't have proper key signing implemented
   // In a real implementation, you would use the user's private key to sign the request
   console.log('🔐 Signing request for user:', username);
   
+  // If user has no private key, just return the request without signing
+  if (!user.privateKey || user.privateKey === 'placeholder-private-key') {
+    console.log('⚠️ User has no private key, sending unsigned request');
+    return {
+      method: request.method,
+      url: request.url,
+      body: request.body,
+      headers: {
+        ...request.headers,
+        'User-Agent': 'fongoblog2/1.0.0',
+        'Date': new Date().toUTCString()
+      }
+    };
+  }
+  
+  // TODO: Implement proper HTTP signature signing here
+  // For now, return the request as-is
   return {
     method: request.method,
     url: request.url,
