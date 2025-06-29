@@ -443,6 +443,7 @@ export async function signRequest(url: string, method: string, body?: string, us
     }
 
     const signatureString = signatureParts.join('\n');
+    console.log(`📝 Signature string:`, signatureString);
 
     // Sign the signature string
     const privateKeyPem = privateKey.replace(/-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----|\s/g, '');
@@ -469,6 +470,8 @@ export async function signRequest(url: string, method: string, body?: string, us
     const authorization = `Signature keyId="${keyId}",algorithm="rsa-sha256",headers="${headers}",signature="${signatureB64}"`;
 
     console.log(`✅ Request signed successfully`);
+    console.log(`🔑 KeyId: ${keyId}`);
+    console.log(`📋 Authorization: ${authorization}`);
 
     // Send the signed request
     return fetch(url, {
