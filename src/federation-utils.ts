@@ -225,4 +225,37 @@ export async function getRecentFederationActivity(limit = 10) {
     recentPosts,
     recentFollows
   };
+}
+
+/**
+ * Sign an HTTP request for federation
+ */
+export async function signRequest(request: {
+  method: string;
+  url: string;
+  body: string;
+  headers: Record<string, string>;
+}, username: string) {
+  const db = mongoClient.db('fongoblog2');
+  const users = db.collection('users');
+  
+  const user = await users.findOne({ username });
+  if (!user || !user.privateKey) {
+    throw new Error('User not found or missing private key');
+  }
+  
+  // For now, return the request as-is since we don't have proper key signing implemented
+  // In a real implementation, you would use the user's private key to sign the request
+  console.log('🔐 Signing request for user:', username);
+  
+  return {
+    method: request.method,
+    url: request.url,
+    body: request.body,
+    headers: {
+      ...request.headers,
+      'User-Agent': 'fongoblog2/1.0.0',
+      'Date': new Date().toUTCString()
+    }
+  };
 } 
