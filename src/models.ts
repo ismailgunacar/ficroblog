@@ -16,6 +16,10 @@ export interface Post {
   userId: ObjectId | string;
   content: string;
   createdAt: Date;
+  replyTo?: ObjectId;
+  likeCount?: number;
+  repostCount?: number;
+  replyCount?: number;
 }
 
 export interface Follow {

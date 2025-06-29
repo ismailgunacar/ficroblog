@@ -15,7 +15,7 @@ const app = new Hono();
 app.use(sessionMiddleware);
 
 // Configuration
-const DOMAIN = process.env.DOMAIN || 'localhost:3000';
+const DOMAIN = process.env.DOMAIN;
 
 const mongoUri = process.env.MONGODB_URI;
 if (!mongoUri) {
@@ -279,6 +279,70 @@ window.attachHandlers = function() {
     }
   }
 };
+
+// Reply form functions
+window.showReplyForm = function(postId) {
+  const replyForm = document.getElementById('reply-form-' + postId);
+  if (replyForm) {
+    replyForm.style.display = 'block';
+    const textarea = replyForm.querySelector('input[name="content"]');
+    if (textarea) {
+      textarea.focus();
+    }
+  }
+};
+
+window.hideReplyForm = function(postId) {
+  const replyForm = document.getElementById('reply-form-' + postId);
+  if (replyForm) {
+    replyForm.style.display = 'none';
+    const textarea = replyForm.querySelector('input[name="content"]');
+    if (textarea) {
+      textarea.value = '';
+    }
+  }
+};
+
+// Like and repost functions
+window.toggleLike = async function(postId) {
+  const button = document.querySelector('button[onclick="toggleLike(\\'' + postId + '\\')"]');
+  if (!button) return;
+  
+  try {
+    const response = await fetch('/post/' + postId + '/like', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      const icon = data.liked ? '❤️' : '🤍';
+      button.innerHTML = icon + ' ' + (data.likeCount || 0);
+    }
+  } catch (error) {
+    console.error('Error toggling like:', error);
+  }
+};
+
+window.toggleRepost = async function(postId) {
+  const button = document.querySelector('button[onclick="toggleRepost(\\'' + postId + '\\')"]');
+  if (!button) return;
+  
+  try {
+    const response = await fetch('/post/' + postId + '/repost', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      const icon = data.reposted ? '🔄' : '⚪';
+      button.innerHTML = icon + ' ' + (data.repostCount || 0);
+    }
+  } catch (error) {
+    console.error('Error toggling repost:', error);
+  }
+};
 `;
 
 // Move renderHome above all usages
@@ -297,7 +361,7 @@ function renderHome({
   followerCount: number,
   followingCount: number,
   allPosts: Post[],
-  userMap: Map<string, string>,
+  userMap: Map<string, User>,
   loggedIn: boolean,
   invalidPassword: boolean
 }) {
@@ -327,7 +391,7 @@ function renderHome({
         #profile-card { 
           margin: 2em 0;
           padding: 1.5em;
-          border-radius: 0;
+          border-radius: 8px;
           border: 1px solid var(--muted-border-color);
         }
         
@@ -479,10 +543,7 @@ function renderHome({
           transition: box-shadow 0.2s ease, transform 0.2s ease;
         }
         
-        // .timeline-list li:hover {
-        //   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-        //   transform: translateY(-2px);
-        // }
+
         
         .timeline-list li header {
           margin-bottom: 0.75em;
@@ -578,9 +639,8 @@ function renderHome({
         <img id="avatar-img" src="${user?.avatarUrl || ''}" alt="avatar" style="width:60px;height:60px;border-radius:50%;object-fit:cover;${user?.avatarUrl ? '' : 'display:none;'}" />
         <input id="edit-avatarUrl" name="avatarUrl" value="${user?.avatarUrl || ''}" placeholder="Avatar URL" style="display:none;" class="input" />
         <div class="profile-info">
-          <h1 id="profile-name">${user?.name || 'fongoblog2'}</h1>
-          <input id="edit-name" name="name" value="${user?.name || ''}" style="display:none;" class="input" />
-          <p id="profile-username">@${user?.username || ''}@${DOMAIN}</p>
+          <h1 id="profile-name"><a href="/" style="text-decoration: none; color: inherit;">${user?.name || 'fongoblog2'}</a></h1>
+          <p id="profile-username"><a href="/@${user?.username || ''}" style="text-decoration: none; color: inherit;">@${user?.username || ''}@${DOMAIN}</a></p>
           <input id="edit-username" name="username" value="${user?.username || ''}" style="display:none;" class="input" />
           <div class="profile-stats">
             <div class="stat-item">
@@ -625,13 +685,38 @@ function renderHome({
           ${allPosts.map(post => `
             <li class="card">
               <header>
-                <a href="/user/${userMap.get(post.userId.toString()) ?? 'unknown'}" class="post-author">@${userMap.get(post.userId.toString()) ?? 'unknown'}</a>
+                <a href="/@${userMap.get(post.userId.toString())?.username ?? 'unknown'}" class="post-author">${userMap.get(post.userId.toString())?.name ?? 'Unknown'} <span style="color: var(--muted-color); font-weight: normal;">(@${userMap.get(post.userId.toString())?.username ?? 'unknown'}@${DOMAIN})</span></a>
               </header>
               <p>${post.content}</p>
               <footer class="post-meta">
-                <small>${post.createdAt ? new Date(post.createdAt).toLocaleDateString() : ''}</small>
-                <a href="/post/${post._id}" class="permalink-link">🔗 Permalink</a>
+                <div style="display: flex; align-items: center; gap: 1em;">
+                  <button onclick="toggleLike('${post._id}')" class="secondary" style="padding: 0.25em 0.5em; font-size: 0.9em; border: none; background: none; cursor: pointer;">
+                    🤍 ${(post as any).likeCount || 0}
+                  </button>
+                  <button onclick="toggleRepost('${post._id}')" class="secondary" style="padding: 0.25em 0.5em; font-size: 0.9em; border: none; background: none; cursor: pointer;">
+                    ⚪ ${(post as any).repostCount || 0}
+                  </button>
+                  <button onclick="showReplyForm('${post._id}')" class="secondary" style="padding: 0.25em 0.5em; font-size: 0.9em; border: none; background: none; cursor: pointer;">
+                    💬 ${(post as any).replyCount || 0}
+                  </button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5em; margin-top: 0.5em;">
+                  <small>${post.createdAt ? new Date(post.createdAt).toLocaleDateString() : ''}</small>
+                  <a href="/post/${post._id}" class="permalink-link">🔗 Permalink</a>
+                </div>
               </footer>
+              ${loggedIn ? `
+              <div id="reply-form-${post._id}" style="display: none; margin-top: 1em; padding-top: 1em; border-top: 1px solid var(--muted-border-color);">
+                <form method="post" action="/reply" class="reply-form">
+                  <input type="hidden" name="replyTo" value="${post._id}" />
+                  <input name="content" placeholder="Write a reply..." required class="input" style="min-height: 60px; resize: vertical;" />
+                  <div style="margin-top: 0.5em;">
+                    <button type="submit" class="primary" style="margin-right: 0.5em;">Reply</button>
+                    <button type="button" onclick="hideReplyForm('${post._id}')" class="outline">Cancel</button>
+                  </div>
+                </form>
+              </div>
+              ` : ''}
             </li>
           `).join('')}
         </ul>
@@ -657,7 +742,7 @@ function renderUserProfile({
   profileUser: User,
   currentUser: User | null,
   userPosts: Post[],
-  userMap: Map<string, string>,
+  userMap: Map<string, User>,
   loggedIn: boolean,
   isOwnProfile: boolean,
   isFollowing: boolean,
@@ -685,7 +770,7 @@ function renderUserProfile({
         #profile-card { 
           margin: 2em 0;
           padding: 1.5em;
-          border-radius: 0;
+          border-radius: 8px;
           border: 1px solid var(--muted-border-color);
         }
         
@@ -816,11 +901,6 @@ function renderUserProfile({
           transition: box-shadow 0.2s ease, transform 0.2s ease;
         }
         
-        .timeline-list li:hover {
-          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-          transform: translateY(-2px);
-        }
-        
         .timeline-list li header {
           margin-bottom: 0.75em;
           padding-bottom: 0.75em;
@@ -883,7 +963,7 @@ function renderUserProfile({
       <script>
         async function toggleFollow() {
           const button = document.getElementById('follow-btn');
-          const response = await fetch('/user/${profileUser.username}/follow', {
+          const response = await fetch('/@${profileUser.username}/follow', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
           });
@@ -902,16 +982,12 @@ function renderUserProfile({
       </script>
     </head>
     <body class="container">
-      <div class="back-link">
-        <a href="/" class="secondary">← Back to Timeline</a>
-      </div>
-      
       <article id="profile-card" class="card">
         <img id="header-img" src="${profileUser.headerUrl || ''}" alt="header" style="object-fit:cover;${profileUser.headerUrl ? '' : 'display:none;'}" />
         <img id="avatar-img" src="${profileUser.avatarUrl || ''}" alt="avatar" style="width:60px;height:60px;border-radius:50%;object-fit:cover;${profileUser.avatarUrl ? '' : 'display:none;'}" />
         <div class="profile-info">
-          <h1 id="profile-name">${profileUser.name}</h1>
-          <p id="profile-username">@${profileUser.username}@${DOMAIN}</p>
+          <h1 id="profile-name"><a href="/" style="text-decoration: none; color: inherit;">${profileUser.name}</a></h1>
+          <p id="profile-username"><a href="/@${profileUser.username}" style="text-decoration: none; color: inherit;">@${profileUser.username}@${DOMAIN}</a></p>
           <div class="profile-stats">
             <div class="stat-item">
               <span class="stat-number">${postCount}</span> Posts
@@ -940,13 +1016,38 @@ function renderUserProfile({
           ${userPosts.map(post => `
             <li class="card">
               <header>
-                <a href="/user/${userMap.get(post.userId.toString()) ?? 'unknown'}" class="post-author">@${userMap.get(post.userId.toString()) ?? 'unknown'}</a>
+                <a href="/@${userMap.get(post.userId.toString())?.username ?? 'unknown'}" class="post-author">${userMap.get(post.userId.toString())?.name ?? 'Unknown'} <span style="color: var(--muted-color); font-weight: normal;">(@${userMap.get(post.userId.toString())?.username ?? 'unknown'}@${DOMAIN})</span></a>
               </header>
               <p>${post.content}</p>
               <footer class="post-meta">
-                <small>${post.createdAt ? new Date(post.createdAt).toLocaleDateString() : ''}</small>
-                <a href="/post/${post._id}" class="permalink-link">🔗 Permalink</a>
+                <div style="display: flex; align-items: center; gap: 1em;">
+                  <button onclick="toggleLike('${post._id}')" class="secondary" style="padding: 0.25em 0.5em; font-size: 0.9em; border: none; background: none; cursor: pointer;">
+                    🤍 ${(post as any).likeCount || 0}
+                  </button>
+                  <button onclick="toggleRepost('${post._id}')" class="secondary" style="padding: 0.25em 0.5em; font-size: 0.9em; border: none; background: none; cursor: pointer;">
+                    ⚪ ${(post as any).repostCount || 0}
+                  </button>
+                  <button onclick="showReplyForm('${post._id}')" class="secondary" style="padding: 0.25em 0.5em; font-size: 0.9em; border: none; background: none; cursor: pointer;">
+                    💬 ${(post as any).replyCount || 0}
+                  </button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5em; margin-top: 0.5em;">
+                  <small>${post.createdAt ? new Date(post.createdAt).toLocaleDateString() : ''}</small>
+                  <a href="/post/${post._id}" class="permalink-link">🔗 Permalink</a>
+                </div>
               </footer>
+              ${loggedIn ? `
+              <div id="reply-form-${post._id}" style="display: none; margin-top: 1em; padding-top: 1em; border-top: 1px solid var(--muted-border-color);">
+                <form method="post" action="/reply" class="reply-form">
+                  <input type="hidden" name="replyTo" value="${post._id}" />
+                  <input name="content" placeholder="Write a reply..." required class="input" style="min-height: 60px; resize: vertical;" />
+                  <div style="margin-top: 0.5em;">
+                    <button type="submit" class="primary" style="margin-right: 0.5em;">Reply</button>
+                    <button type="button" onclick="hideReplyForm('${post._id}')" class="outline">Cancel</button>
+                  </div>
+                </form>
+              </div>
+              ` : ''}
             </li>
           `).join('')}
         </ul>
@@ -971,7 +1072,7 @@ function renderPostPermalink({
   post: Post,
   postAuthor: User,
   currentUser: User | null,
-  userMap: Map<string, string>,
+  userMap: Map<string, User>,
   loggedIn: boolean,
   postCount: number,
   followerCount: number,
@@ -997,7 +1098,7 @@ function renderPostPermalink({
         #profile-card { 
           margin: 2em 0;
           padding: 1.5em;
-          border-radius: 0;
+          border-radius: 8px;
           border: 1px solid var(--muted-border-color);
         }
         
@@ -1099,11 +1200,6 @@ function renderPostPermalink({
           transition: box-shadow 0.2s ease, transform 0.2s ease;
         }
         
-        .timeline-list li:hover {
-          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-          transform: translateY(-2px);
-        }
-        
         .timeline-list li header {
           margin-bottom: 0.75em;
           padding-bottom: 0.75em;
@@ -1152,16 +1248,12 @@ function renderPostPermalink({
       </style>
     </head>
     <body class="container">
-      <div class="back-link">
-        <a href="/" class="secondary">← Back to Timeline</a>
-      </div>
-      
       <article id="profile-card" class="card">
         <img id="header-img" src="${postAuthor.headerUrl || ''}" alt="header" style="object-fit:cover;${postAuthor.headerUrl ? '' : 'display:none;'}" />
         <img id="avatar-img" src="${postAuthor.avatarUrl || ''}" alt="avatar" style="width:60px;height:60px;border-radius:50%;object-fit:cover;${postAuthor.avatarUrl ? '' : 'display:none;'}" />
         <div class="profile-info">
-          <h1 id="profile-name">${postAuthor.name}</h1>
-          <p id="profile-username">@${postAuthor.username}@${DOMAIN}</p>
+          <h1 id="profile-name"><a href="/" style="text-decoration: none; color: inherit;">${postAuthor.name}</a></h1>
+          <p id="profile-username"><a href="/@${postAuthor.username}" style="text-decoration: none; color: inherit;">@${postAuthor.username}@${DOMAIN}</a></p>
           <div class="profile-stats">
             <div class="stat-item">
               <span class="stat-number">${postCount}</span> Posts
@@ -1181,13 +1273,38 @@ function renderPostPermalink({
         <ul class="timeline-list">
           <li class="card">
             <header>
-              <a href="/user/${userMap.get(post.userId.toString()) ?? 'unknown'}" class="post-author">@${userMap.get(post.userId.toString()) ?? 'unknown'}</a>
+              <a href="/@${userMap.get(post.userId.toString())?.username ?? 'unknown'}" class="post-author">${userMap.get(post.userId.toString())?.name ?? 'Unknown'} <span style="color: var(--muted-color); font-weight: normal;">(@${userMap.get(post.userId.toString())?.username ?? 'unknown'}@${DOMAIN})</span></a>
             </header>
             <p>${post.content}</p>
             <footer class="post-meta">
-              <small>${post.createdAt ? new Date(post.createdAt).toLocaleDateString() : ''}</small>
-              <a href="/post/${post._id}" class="permalink-link">🔗 Permalink</a>
+              <div style="display: flex; align-items: center; gap: 1em;">
+                <button onclick="toggleLike('${post._id}')" class="secondary" style="padding: 0.25em 0.5em; font-size: 0.9em; border: none; background: none; cursor: pointer;">
+                  🤍 ${(post as any).likeCount || 0}
+                </button>
+                <button onclick="toggleRepost('${post._id}')" class="secondary" style="padding: 0.25em 0.5em; font-size: 0.9em; border: none; background: none; cursor: pointer;">
+                  ⚪ ${(post as any).repostCount || 0}
+                </button>
+                <button onclick="showReplyForm('${post._id}')" class="secondary" style="padding: 0.25em 0.5em; font-size: 0.9em; border: none; background: none; cursor: pointer;">
+                  💬 ${(post as any).replyCount || 0}
+                </button>
+              </div>
+              <div style="display: flex; align-items: center; gap: 0.5em; margin-top: 0.5em;">
+                <small>${post.createdAt ? new Date(post.createdAt).toLocaleDateString() : ''}</small>
+                <a href="/post/${post._id}" class="permalink-link">🔗 Permalink</a>
+              </div>
             </footer>
+            ${loggedIn ? `
+            <div id="reply-form-${post._id}" style="display: none; margin-top: 1em; padding-top: 1em; border-top: 1px solid var(--muted-border-color);">
+              <form method="post" action="/reply" class="reply-form">
+                <input type="hidden" name="replyTo" value="${post._id}" />
+                <input name="content" placeholder="Write a reply..." required class="input" style="min-height: 60px; resize: vertical;" />
+                <div style="margin-top: 0.5em;">
+                  <button type="submit" class="primary" style="margin-right: 0.5em;">Reply</button>
+                  <button type="button" onclick="hideReplyForm('${post._id}')" class="outline">Cancel</button>
+                </div>
+              </form>
+            </div>
+            ` : ''}
           </li>
         </ul>
       </div>
@@ -1196,7 +1313,89 @@ function renderPostPermalink({
   `;
 }
 
-// User profile page (/user/username) - FIRST ROUTE to ensure it's matched
+// @username route (direct profile page) - DEFINED BEFORE /user/:username
+app.get('/@*', async (c) => {
+  console.log('=== @USERNAME ROUTE HIT ===');
+  console.log('Path:', c.req.path);
+  console.log('URL:', c.req.url);
+  console.log('Method:', c.req.method);
+  
+  const path = c.req.path;
+  const username = path.substring(2); // Remove the /@ prefix
+  console.log('Username from path:', username);
+  
+  await client.connect();
+  const db = client.db();
+  const users = db.collection<User>('users');
+  const posts = db.collection<Post>('posts');
+  const follows = db.collection<Follow>('follows');
+  
+  // Check if any users exist, if not redirect to setup
+  const anyUser = await users.findOne({});
+  if (!anyUser) return c.redirect('/setup');
+  
+  console.log('Looking for username:', username);
+  const profileUser = await users.findOne({ username });
+  
+  if (!profileUser) {
+    console.log('User not found:', username);
+    return c.html('<h1>User not found</h1>', 404);
+  }
+  
+  console.log('Found user:', profileUser.username);
+  
+  // Get user's posts
+  const userPosts = await posts.find({ userId: profileUser._id }).sort({ createdAt: -1 }).limit(20).toArray();
+  
+  // Check if current user is logged in
+  const session = getCookie(c, 'session');
+  let loggedIn = false;
+  let currentUser: User | null = null;
+  let isOwnProfile = false;
+  let isFollowing = false;
+  
+  if (session && session.length === 24 && /^[a-fA-F0-9]+$/.test(session)) {
+    currentUser = await users.findOne({ _id: new ObjectId(session) });
+    if (currentUser) {
+      loggedIn = true;
+      isOwnProfile = currentUser._id?.toString() === profileUser._id?.toString();
+      
+      // Check if following
+      if (!isOwnProfile) {
+        const follow = await follows.findOne({ 
+          followerId: currentUser._id?.toString(), 
+          followingId: profileUser._id?.toString() 
+        });
+        isFollowing = !!follow;
+      }
+    }
+  }
+  
+  // Stats
+  const postCount = await posts.countDocuments({ userId: profileUser._id });
+  const followerCount = await follows.countDocuments({ followingId: profileUser._id?.toString() });
+  const followingCount = await follows.countDocuments({ followerId: profileUser._id?.toString() });
+  
+  // Create userMap for posts
+  const userMap = new Map<string, User>();
+  userMap.set(profileUser._id?.toString() || '', profileUser);
+  
+  console.log('Rendering @username profile page for:', username);
+  return c.html(renderUserProfile({ 
+    profileUser, 
+    currentUser, 
+    userPosts, 
+    userMap, 
+    loggedIn, 
+    isOwnProfile, 
+    isFollowing, 
+    postCount, 
+    followerCount, 
+    followingCount 
+  }));
+});
+
+// User profile page (/user/username) - SECOND ROUTE for fediverse compatibility
 app.get('/user/:username', async (c) => {
   console.log('=== PROFILE ROUTE HIT ===');
   console.log('Path:', c.req.path);
@@ -1262,8 +1461,8 @@ app.get('/user/:username', async (c) => {
   }
   
   // Create userMap for posts
-  const userMap = new Map<string, string>();
-  userMap.set(profileUser._id?.toString() || '', profileUser.username);
+  const userMap = new Map<string, User>();
+  userMap.set(profileUser._id?.toString() || '', profileUser);
   
   console.log('Rendering profile page for:', username);
   return c.html(renderUserProfile({ 
@@ -1278,12 +1477,6 @@ app.get('/user/:username', async (c) => {
     followerCount, 
     followingCount 
   }));
-});
-
-// @username route (redirects to /user/username)
-app.get('/@:username', async (c) => {
-  const username = c.req.param('username');
-  return c.redirect(`/user/${username}`);
 });
 
 // Individual post permalink route
@@ -1337,8 +1530,8 @@ app.get('/post/:postId', async (c) => {
   }
   
   // Create userMap for the single post
-  const userMap = new Map<string, string>();
-  userMap.set(post.userId.toString(), postAuthor.username);
+  const userMap = new Map<string, User>();
+  userMap.set(post.userId.toString(), postAuthor);
   
   // Stats for the author
   const postCount = await posts.countDocuments({ userId: postAuthor._id });
@@ -1502,20 +1695,21 @@ app.get('/', async (c) => {
   
   const allPosts = await posts.find({}).sort({ createdAt: -1 }).limit(20).toArray();
   // Fetch usernames for posts
-  const userMap = new Map<string, string>();
+  const userMap = new Map<string, User>();
   for (const post of allPosts) {
     const userIdStr = post.userId.toString();
     if (post.userId && !userMap.has(userIdStr)) {
-      let username = 'unknown';
+      let user: User | null = null;
       try {
         // Handle both ObjectId and string types
         const userId = typeof post.userId === 'string' ? new ObjectId(post.userId) : post.userId;
-        const user = await users.findOne({ _id: userId });
-        if (user) username = user.username;
+        user = await users.findOne({ _id: userId });
       } catch (e) {
         // ignore invalid ObjectId
       }
-      userMap.set(userIdStr, username);
+      if (user) {
+        userMap.set(userIdStr, user);
+      }
     }
   }
   // Check session via cookie
@@ -1562,18 +1756,19 @@ app.post('/', async (c) => {
     const valid = await verifyPassword(password, user.passwordHash);
     // Fetch posts and stats as in GET '/'
     const allPosts = await posts.find({}).sort({ createdAt: -1 }).limit(20).toArray();
-    const userMap = new Map<string, string>();
+    const userMap = new Map<string, User>();
     for (const post of allPosts) {
       const userIdStr = post.userId.toString();
       if (post.userId && !userMap.has(userIdStr)) {
-        let username = 'unknown';
+        let user: User | null = null;
         try {
           // Handle both ObjectId and string types
           const userId = typeof post.userId === 'string' ? new ObjectId(post.userId) : post.userId;
-          const u = await users.findOne({ _id: userId });
-          if (u) username = u.username;
+          user = await users.findOne({ _id: userId });
         } catch (e) {}
-        userMap.set(userIdStr, username);
+        if (user) {
+          userMap.set(userIdStr, user);
+        }
       }
     }
     // Stats for profile card
@@ -1649,6 +1844,53 @@ app.post('/profile/edit', async (c) => {
 
 // Follow/Unfollow user
 app.post('/user/:username/follow', async (c) => {
+  await client.connect();
+  const db = client.db();
+  const users = db.collection<User>('users');
+  const follows = db.collection<Follow>('follows');
+  
+  const session = getCookie(c, 'session');
+  if (!session || session.length !== 24 || !/^[a-fA-F0-9]+$/.test(session)) {
+    return c.json({ success: false, error: 'Not logged in' });
+  }
+  
+  const currentUser = await users.findOne({ _id: new ObjectId(session) });
+  if (!currentUser) {
+    return c.json({ success: false, error: 'User not found' });
+  }
+  
+  const username = c.req.param('username');
+  const profileUser = await users.findOne({ username });
+  if (!profileUser) {
+    return c.json({ success: false, error: 'Profile user not found' });
+  }
+  
+  if (currentUser._id?.toString() === profileUser._id?.toString()) {
+    return c.json({ success: false, error: 'Cannot follow yourself' });
+  }
+  
+  const existingFollow = await follows.findOne({ 
+    followerId: currentUser._id?.toString(), 
+    followingId: profileUser._id?.toString() 
+  });
+  
+  if (existingFollow) {
+    // Unfollow
+    await follows.deleteOne({ _id: existingFollow._id });
+    return c.json({ success: true, following: false });
+  }
+  
+  // Follow
+  await follows.insertOne({
+    followerId: currentUser._id?.toString() || '',
+    followingId: profileUser._id?.toString() || '',
+    createdAt: new Date()
+  });
+  return c.json({ success: true, following: true });
+});
+
+// Follow/Unfollow user via @username
+app.post('/@:username/follow', async (c) => {
   await client.connect();
   const db = client.db();
   const users = db.collection<User>('users');
@@ -1865,6 +2107,303 @@ app.get('/users/:username', async (c) => {
   return c.json(actor);
 });
 
+// ActivityPub Outbox - serves user's public activities
+app.get('/users/:username/outbox', async (c) => {
+  const username = c.req.param('username');
+  
+  await client.connect();
+  const db = client.db();
+  const users = db.collection<User>('users');
+  const posts = db.collection<Post>('posts');
+  
+  const user = await users.findOne({ username });
+  if (!user) {
+    return c.json({ error: 'User not found' }, 404);
+  }
+  
+  // Get user's posts
+  const userPosts = await posts.find({ userId: user._id }).sort({ createdAt: -1 }).limit(20).toArray();
+  
+  // Convert posts to ActivityPub Create activities
+  const activities = userPosts.map(post => ({
+    "@context": "https://www.w3.org/ns/activitystreams",
+    "id": `https://${DOMAIN}/users/${username}/statuses/${post._id}`,
+    "type": "Create",
+    "actor": `https://${DOMAIN}/users/${username}`,
+    "published": post.createdAt,
+    "to": ["https://www.w3.org/ns/activitystreams#Public"],
+    "cc": [`https://${DOMAIN}/users/${username}/followers`],
+    "object": {
+      "@context": "https://www.w3.org/ns/activitystreams",
+      "id": `https://${DOMAIN}/users/${username}/statuses/${post._id}`,
+      "type": "Note",
+      "summary": null,
+      "content": post.content,
+      "inReplyTo": null,
+      "published": post.createdAt,
+      "url": `https://${DOMAIN}/users/${username}/statuses/${post._id}`,
+      "attributedTo": `https://${DOMAIN}/users/${username}`,
+      "to": ["https://www.w3.org/ns/activitystreams#Public"],
+      "cc": [`https://${DOMAIN}/users/${username}/followers`],
+      "sensitive": false,
+      "atomUri": `https://${DOMAIN}/users/${username}/statuses/${post._id}`,
+      "inReplyToAtomUri": null,
+      "conversation": null,
+      "replies": {
+        "id": `https://${DOMAIN}/users/${username}/statuses/${post._id}/replies`,
+        "type": "Collection",
+        "first": {
+          "type": "CollectionPage",
+          "next": `https://${DOMAIN}/users/${username}/statuses/${post._id}/replies?only_activities=true&page=true`,
+          "partOf": `https://${DOMAIN}/users/${username}/statuses/${post._id}/replies`,
+          "items": []
+        }
+      },
+      "reblogsCount": 0,
+      "favouritesCount": 0,
+      "favourited": false,
+      "reblogged": false,
+      "muted": false,
+      "bookmarked": false,
+      "pinned": false,
+      "reblog": null,
+      "application": {
+        "name": "fongoblog2",
+        "website": null
+      },
+      "media_attachments": [],
+      "mentions": [],
+      "tags": [],
+      "emojis": [],
+      "card": null,
+      "poll": null
+    }
+  }));
+  
+  const outbox = {
+    "@context": "https://www.w3.org/ns/activitystreams",
+    "id": `https://${DOMAIN}/users/${username}/outbox`,
+    "type": "OrderedCollection",
+    "totalItems": userPosts.length,
+    "orderedItems": activities,
+    "first": `https://${DOMAIN}/users/${username}/outbox?page=true`,
+    "last": `https://${DOMAIN}/users/${username}/outbox?min_id=0&page=true`
+  };
+  
+  return c.json(outbox);
+});
+
+// Individual post as ActivityPub Note
+app.get('/users/:username/statuses/:postId', async (c) => {
+  const username = c.req.param('username');
+  const postId = c.req.param('postId');
+  
+  await client.connect();
+  const db = client.db();
+  const users = db.collection<User>('users');
+  const posts = db.collection<Post>('posts');
+  
+  const user = await users.findOne({ username });
+  if (!user) {
+    return c.json({ error: 'User not found' }, 404);
+  }
+  
+  let post: Post | null = null;
+  try {
+    post = await posts.findOne({ _id: new ObjectId(postId), userId: user._id });
+  } catch (e) {
+    return c.json({ error: 'Invalid post ID' }, 400);
+  }
+  
+  if (!post) {
+    return c.json({ error: 'Post not found' }, 404);
+  }
+  
+  const note = {
+    "@context": "https://www.w3.org/ns/activitystreams",
+    "id": `https://${DOMAIN}/users/${username}/statuses/${post._id}`,
+    "type": "Note",
+    "summary": null,
+    "content": post.content,
+    "inReplyTo": null,
+    "published": post.createdAt,
+    "url": `https://${DOMAIN}/users/${username}/statuses/${post._id}`,
+    "attributedTo": `https://${DOMAIN}/users/${username}`,
+    "to": ["https://www.w3.org/ns/activitystreams#Public"],
+    "cc": [`https://${DOMAIN}/users/${username}/followers`],
+    "sensitive": false,
+    "atomUri": `https://${DOMAIN}/users/${username}/statuses/${post._id}`,
+    "inReplyToAtomUri": null,
+    "conversation": null,
+    "replies": {
+      "id": `https://${DOMAIN}/users/${username}/statuses/${post._id}/replies`,
+      "type": "Collection",
+      "first": {
+        "type": "CollectionPage",
+        "next": `https://${DOMAIN}/users/${username}/statuses/${post._id}/replies?only_activities=true&page=true`,
+        "partOf": `https://${DOMAIN}/users/${username}/statuses/${post._id}/replies`,
+        "items": []
+      }
+    },
+    "reblogsCount": 0,
+    "favouritesCount": 0,
+    "favourited": false,
+    "reblogged": false,
+    "muted": false,
+    "bookmarked": false,
+    "pinned": false,
+    "reblog": null,
+    "application": {
+      "name": "fongoblog2",
+      "website": null
+    },
+    "media_attachments": [],
+    "mentions": [],
+    "tags": [],
+    "emojis": [],
+    "card": null,
+    "poll": null
+  };
+  
+  return c.json(note);
+});
+
+// ActivityPub Inbox - accepts incoming activities
+app.post('/users/:username/inbox', async (c) => {
+  const username = c.req.param('username');
+  
+  await client.connect();
+  const db = client.db();
+  const users = db.collection<User>('users');
+  const follows = db.collection<Follow>('follows');
+  
+  const user = await users.findOne({ username });
+  if (!user) {
+    return c.json({ error: 'User not found' }, 404);
+  }
+  
+  const body = await c.req.json();
+  console.log('Inbox received activity:', JSON.stringify(body, null, 2));
+  
+  // Handle Follow activity
+  if (body.type === 'Follow') {
+    const follower = body.actor;
+    const following = body.object;
+    
+    // Verify this is a follow request for our user
+    if (following === `https://${DOMAIN}/users/${username}`) {
+      // Extract username from actor URL (simplified - in production you'd want to fetch the actor)
+      const actorUrl = new URL(follower);
+      const followerUsername = actorUrl.pathname.split('/').pop();
+      
+      if (followerUsername) {
+        // Store the follow relationship
+        await follows.insertOne({
+          followerId: follower, // Store the full actor URL
+          followingId: user._id?.toString() || '',
+          createdAt: new Date()
+        });
+        
+        console.log(`Follow request accepted from ${follower}`);
+        
+        // Send Accept activity back
+        const acceptActivity = {
+          "@context": "https://www.w3.org/ns/activitystreams",
+          "id": `https://${DOMAIN}/follows/${Date.now()}`,
+          "type": "Accept",
+          "actor": `https://${DOMAIN}/users/${username}`,
+          "object": body
+        };
+        
+        // In a real implementation, you'd send this back to the follower's inbox
+        console.log('Would send Accept activity:', acceptActivity);
+      }
+    }
+  }
+  
+  // Handle Undo Follow activity
+  if (body.type === 'Undo' && body.object?.type === 'Follow') {
+    const follower = body.actor;
+    const following = body.object.object;
+    
+    if (following === `https://${DOMAIN}/users/${username}`) {
+      // Remove the follow relationship
+      await follows.deleteOne({
+        followerId: follower,
+        followingId: user._id?.toString()
+      });
+      
+      console.log(`Unfollow request processed from ${follower}`);
+    }
+  }
+  
+  return c.json({ success: true });
+});
+
+// Shared inbox for efficiency
+app.post('/inbox', async (c) => {
+  const body = await c.req.json();
+  console.log('Shared inbox received activity:', JSON.stringify(body, null, 2));
+  
+  // For now, just log the activity
+  // In a real implementation, you'd route it to the appropriate user's inbox
+  return c.json({ success: true });
+});
+
+// Followers collection
+app.get('/users/:username/followers', async (c) => {
+  const username = c.req.param('username');
+  
+  await client.connect();
+  const db = client.db();
+  const users = db.collection<User>('users');
+  const follows = db.collection<Follow>('follows');
+  
+  const user = await users.findOne({ username });
+  if (!user) {
+    return c.json({ error: 'User not found' }, 404);
+  }
+  
+  const followers = await follows.find({ followingId: user._id?.toString() }).toArray();
+  
+  const collection = {
+    "@context": "https://www.w3.org/ns/activitystreams",
+    "id": `https://${DOMAIN}/users/${username}/followers`,
+    "type": "OrderedCollection",
+    "totalItems": followers.length,
+    "orderedItems": followers.map(f => f.followerId)
+  };
+  
+  return c.json(collection);
+});
+
+// Following collection
+app.get('/users/:username/following', async (c) => {
+  const username = c.req.param('username');
+  
+  await client.connect();
+  const db = client.db();
+  const users = db.collection<User>('users');
+  const follows = db.collection<Follow>('follows');
+  
+  const user = await users.findOne({ username });
+  if (!user) {
+    return c.json({ error: 'User not found' }, 404);
+  }
+  
+  const following = await follows.find({ followerId: user._id?.toString() }).toArray();
+  
+  const collection = {
+    "@context": "https://www.w3.org/ns/activitystreams",
+    "id": `https://${DOMAIN}/users/${username}/following`,
+    "type": "OrderedCollection",
+    "totalItems": following.length,
+    "orderedItems": following.map(f => f.followingId)
+  };
+  
+  return c.json(collection);
+});
+
 // --- Static file serving (for images, etc.) ---
 app.get('/public/*', async (c) => {
   // Get the requested file path
@@ -1908,3 +2447,140 @@ app.onError((err, c) => {
 
 // --- Start the server ---
 serve({ fetch: app.fetch, port: 8000 });
+
+// Reply to a post
+app.post('/reply', async (c) => {
+  await client.connect();
+  const db = client.db();
+  const users = db.collection<User>('users');
+  const posts = db.collection<Post>('posts');
+  
+  const session = getCookie(c, 'session');
+  if (!session || session.length !== 24 || !/^[a-fA-F0-9]+$/.test(session)) {
+    return c.redirect('/');
+  }
+  
+  const loggedInUser = await users.findOne({ _id: new ObjectId(session) });
+  if (!loggedInUser) {
+    return c.redirect('/');
+  }
+  
+  const body = await c.req.parseBody();
+  const replyTo = typeof body['replyTo'] === 'string' ? body['replyTo'] : '';
+  const content = typeof body['content'] === 'string' ? body['content'] : '';
+  
+  if (!replyTo || !content) {
+    return c.redirect('/');
+  }
+  
+  // Verify the post being replied to exists
+  let parentPost: Post | null = null;
+  try {
+    parentPost = await posts.findOne({ _id: new ObjectId(replyTo) });
+  } catch (e) {
+    return c.redirect('/');
+  }
+  
+  if (!parentPost) {
+    return c.redirect('/');
+  }
+  
+  // Create the reply post
+  const replyPost: Post = {
+    userId: loggedInUser._id,
+    content,
+    createdAt: new Date(),
+    replyTo: new ObjectId(replyTo)
+  };
+  
+  await posts.insertOne(replyPost);
+  return c.redirect('/');
+});
+
+// Like a post
+app.post('/post/:postId/like', async (c) => {
+  await client.connect();
+  const db = client.db();
+  const users = db.collection<User>('users');
+  const posts = db.collection<Post>('posts');
+  
+  const session = getCookie(c, 'session');
+  if (!session || session.length !== 24 || !/^[a-fA-F0-9]+$/.test(session)) {
+    return c.json({ success: false, error: 'Not logged in' });
+  }
+  
+  const loggedInUser = await users.findOne({ _id: new ObjectId(session) });
+  if (!loggedInUser) {
+    return c.json({ success: false, error: 'User not found' });
+  }
+  
+  const postId = c.req.param('postId');
+  let post: Post | null = null;
+  try {
+    post = await posts.findOne({ _id: new ObjectId(postId) });
+  } catch (e) {
+    return c.json({ success: false, error: 'Invalid post ID' });
+  }
+  
+  if (!post) {
+    return c.json({ success: false, error: 'Post not found' });
+  }
+  
+  // For now, just increment the like count
+  // In a real implementation, you'd track individual likes
+  const currentLikeCount = (post as any).likeCount || 0;
+  await posts.updateOne(
+    { _id: new ObjectId(postId) },
+    { $set: { likeCount: currentLikeCount + 1 } }
+  );
+  
+  return c.json({ 
+    success: true, 
+    liked: true, 
+    likeCount: currentLikeCount + 1 
+  });
+});
+
+// Repost a post
+app.post('/post/:postId/repost', async (c) => {
+  await client.connect();
+  const db = client.db();
+  const users = db.collection<User>('users');
+  const posts = db.collection<Post>('posts');
+  
+  const session = getCookie(c, 'session');
+  if (!session || session.length !== 24 || !/^[a-fA-F0-9]+$/.test(session)) {
+    return c.json({ success: false, error: 'Not logged in' });
+  }
+  
+  const loggedInUser = await users.findOne({ _id: new ObjectId(session) });
+  if (!loggedInUser) {
+    return c.json({ success: false, error: 'User not found' });
+  }
+  
+  const postId = c.req.param('postId');
+  let post: Post | null = null;
+  try {
+    post = await posts.findOne({ _id: new ObjectId(postId) });
+  } catch (e) {
+    return c.json({ success: false, error: 'Invalid post ID' });
+  }
+  
+  if (!post) {
+    return c.json({ success: false, error: 'Post not found' });
+  }
+  
+  // For now, just increment the repost count
+  // In a real implementation, you'd track individual reposts
+  const currentRepostCount = (post as any).repostCount || 0;
+  await posts.updateOne(
+    { _id: new ObjectId(postId) },
+    { $set: { repostCount: currentRepostCount + 1 } }
+  );
+  
+  return c.json({ 
+    success: true, 
+    reposted: true, 
+    repostCount: currentRepostCount + 1 
+  });
+});
