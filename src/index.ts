@@ -1907,4 +1907,4 @@ app.onError((err, c) => {
 });
 
 // --- Start the server ---
-serve({ fetch: app.fetch, port: 3000 });
+serve({ fetch: app.fetch, port: 8000 });
