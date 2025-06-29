@@ -488,21 +488,44 @@ export function mountFedifyRoutes(app: Hono, mongoClient: MongoClient) {
   
   const federation = createFederationInstance(mongoClient);
   
-  // Mount Fedify routes
-  app.use('*', async (c, next) => {
-    // Log all requests to Fedify endpoints
-    const url = c.req.url;
-    if (url.includes('/.well-known/') || 
-        url.includes('/users/') || 
-        url.includes('/inbox') ||
-        url.includes('/outbox') ||
-        url.includes('/followers') ||
-        url.includes('/following')) {
-      console.log(`🌐 Fedify request: ${c.req.method} ${url}`);
-    }
+  // Mount Fedify routes more specifically
+  app.use('/.well-known/*', async (c, next) => {
+    console.log(`🌐 Fedify well-known request: ${c.req.method} ${c.req.url}`);
     await next();
   });
   
-  app.use('*', federation.hono);
+  app.use('/users/*', async (c, next) => {
+    console.log(`🌐 Fedify users request: ${c.req.method} ${c.req.url}`);
+    await next();
+  });
+  
+  app.use('/inbox', async (c, next) => {
+    console.log(`🌐 Fedify inbox request: ${c.req.method} ${c.req.url}`);
+    await next();
+  });
+  
+  app.use('/outbox', async (c, next) => {
+    console.log(`🌐 Fedify outbox request: ${c.req.method} ${c.req.url}`);
+    await next();
+  });
+  
+  app.use('/followers', async (c, next) => {
+    console.log(`🌐 Fedify followers request: ${c.req.method} ${c.req.url}`);
+    await next();
+  });
+  
+  app.use('/following', async (c, next) => {
+    console.log(`🌐 Fedify following request: ${c.req.method} ${c.req.url}`);
+    await next();
+  });
+  
+  // Mount Fedify federation middleware only on ActivityPub routes
+  app.use('/.well-known/*', federation.hono);
+  app.use('/users/*', federation.hono);
+  app.use('/inbox', federation.hono);
+  app.use('/outbox', federation.hono);
+  app.use('/followers', federation.hono);
+  app.use('/following', federation.hono);
+  
   console.log('✅ Fedify routes mounted successfully');
 } 
