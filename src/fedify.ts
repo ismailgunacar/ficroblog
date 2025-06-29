@@ -125,8 +125,8 @@ export function createFederationInstance(mongoClient: MongoClient) {
     const domain = ctx.hostname;
     console.log(`✅ Creating actor for ${identifier} on domain ${domain}`);
     
-    // Return a plain object with all ActivityPub fields, including publicKey
-    return {
+    // Build the actor object
+    const actor: any = {
       '@context': [
         'https://www.w3.org/ns/activitystreams',
         'https://w3id.org/security/v1'
@@ -142,13 +142,17 @@ export function createFederationInstance(mongoClient: MongoClient) {
       following: ctx.getFollowingUri(identifier),
       url: `https://${domain}/users/${user.username}`,
       icon: user.avatarUrl ? { type: 'Image', url: user.avatarUrl } : undefined,
-      image: user.headerUrl ? { type: 'Image', url: user.headerUrl } : undefined,
-      publicKey: user.publicKey ? {
+      image: user.headerUrl ? { type: 'Image', url: user.headerUrl } : undefined
+    };
+    if (user.publicKey && typeof user.publicKey === 'string' && user.publicKey.trim()) {
+      actor.publicKey = {
         id: `https://${domain}/users/${user.username}#main-key`,
         owner: `https://${domain}/users/${user.username}`,
         publicKeyPem: user.publicKey
-      } : undefined
-    };
+      };
+    }
+    console.log('Actor JSON:', JSON.stringify(actor, null, 2));
+    return actor;
   });
   console.log('👤 Actor dispatcher configured');
 
