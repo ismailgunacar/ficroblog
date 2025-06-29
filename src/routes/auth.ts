@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { MongoClient, ObjectId } from 'mongodb';
 import { getCookie, setCookie } from 'hono/cookie';
 import { hashPassword, verifyPassword } from '../auth-utils';
+import { generateKeyPair } from '../keys';
 import type { User } from '../models';
 
 export function mountAuthRoutes(app: Hono, client: MongoClient) {
@@ -99,26 +100,22 @@ export function mountAuthRoutes(app: Hono, client: MongoClient) {
     }
     
     const passwordHash = await hashPassword(password);
-    const { publicKey, privateKey } = generateRSAKeyPair();
+    const { privateKey, publicKey } = generateKeyPair();
+    
     const newUser: User = { 
       username, 
       name, 
       passwordHash, 
       createdAt: new Date(), 
       publicKey, 
-      privateKey 
+      privateKey,
+      avatarUrl: 'https://placehold.co/600x400',
+      bio: 'Bio for testing.',
+      headerUrl: 'https://placehold.co/600x400'
     };
     
     const result = await users.insertOne(newUser);
     setCookie(c, 'session', result.insertedId.toString(), { httpOnly: true, path: '/' });
     return c.redirect('/');
   });
-}
-
-function generateRSAKeyPair() {
-  // Placeholder for RSA key generation
-  return {
-    publicKey: 'placeholder-public-key',
-    privateKey: 'placeholder-private-key'
-  };
 } 

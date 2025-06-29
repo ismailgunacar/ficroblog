@@ -2,6 +2,7 @@ import { client as mongoClient } from './index';
 import { ObjectId } from 'mongodb';
 import type { MongoClient } from 'mongodb';
 import type { User, Follow } from './models';
+import { getUserKeys } from './keys';
 
 // Utility functions for federation
 
@@ -411,13 +412,78 @@ export async function signRequest(url: string, method: string, body?: string, us
     });
   }
 
-  // Get user and their private key
-  const user = await users.findOne({ _id: new ObjectId(userId) });
-  console.log(`🔍 User lookup result:`, user ? 'Found' : 'Not found');
+  try {
+    // Get user and ensure they have keys
+    const user = await users.findOne({ _id: new ObjectId(userId) });
+    if (!user) {
+      console.log(`❌ User not found: ${userId}`);
+      throw new Error('User not found');
+    }
 
-  if (!user || !user.privateKey) {
-    console.log(`❌ User not found or missing private key`);
-    // Send unsigned request
+    console.log(`✅ User found: ${user.username}`);
+    
+    // Get user's keys, generating if missing
+    const { privateKey, publicKey } = await getUserKeys(userId);
+    console.log(`✅ User has keys, signing request...`);
+
+    // Create the signature
+    const date = new Date().toUTCString();
+    const digest = body ? await crypto.subtle.digest('SHA-256', new TextEncoder().encode(body)) : null;
+    const digestHeader = digest ? `SHA-256=${btoa(String.fromCharCode(...new Uint8Array(digest)))}` : '';
+
+    // Create the signature string
+    const signatureParts = [
+      `(request-target): ${method.toLowerCase()} ${new URL(url).pathname}`,
+      `host: ${new URL(url).host}`,
+      `date: ${date}`
+    ];
+
+    if (digestHeader) {
+      signatureParts.push(`digest: ${digestHeader}`);
+    }
+
+    const signatureString = signatureParts.join('\n');
+
+    // Sign the signature string
+    const privateKeyBuffer = new Uint8Array(Buffer.from(privateKey, 'utf8'));
+    const key = await crypto.subtle.importKey(
+      'pkcs8',
+      privateKeyBuffer,
+      {
+        name: 'RSASSA-PKCS1-v1_5',
+        hash: 'SHA-256'
+      },
+      false,
+      ['sign']
+    );
+
+    const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(signatureString));
+    const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signature)));
+
+    // Create the Authorization header
+    const keyId = `https://gunac.ar/users/${user.username}#main-key`;
+    const headers = signatureParts.map(part => part.split(': ')[0]).join(' ');
+    
+    const authorization = `Signature keyId="${keyId}",algorithm="rsa-sha256",headers="${headers}",signature="${signatureB64}"`;
+
+    console.log(`✅ Request signed successfully`);
+
+    // Send the signed request
+    return fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/activity+json',
+        'Accept': 'application/activity+json',
+        'Date': date,
+        'Authorization': authorization,
+        ...(digestHeader && { 'Digest': digestHeader })
+      },
+      body,
+      duplex: 'half'
+    });
+  } catch (error) {
+    console.error(`❌ Error signing request:`, error);
+    // Send unsigned request as fallback
     return fetch(url, {
       method,
       headers: {
@@ -428,64 +494,6 @@ export async function signRequest(url: string, method: string, body?: string, us
       duplex: 'half'
     });
   }
-
-  console.log(`✅ User found with private key, signing request...`);
-
-  // Create the signature
-  const date = new Date().toUTCString();
-  const digest = body ? await crypto.subtle.digest('SHA-256', new TextEncoder().encode(body)) : null;
-  const digestHeader = digest ? `SHA-256=${btoa(String.fromCharCode(...new Uint8Array(digest)))}` : '';
-
-  // Create the signature string
-  const signatureParts = [
-    `(request-target): ${method.toLowerCase()} ${new URL(url).pathname}`,
-    `host: ${new URL(url).host}`,
-    `date: ${date}`
-  ];
-
-  if (digestHeader) {
-    signatureParts.push(`digest: ${digestHeader}`);
-  }
-
-  const signatureString = signatureParts.join('\n');
-
-  // Sign the signature string
-  const privateKeyBuffer = new Uint8Array(user.privateKey);
-  const key = await crypto.subtle.importKey(
-    'pkcs8',
-    privateKeyBuffer,
-    {
-      name: 'RSASSA-PKCS1-v1_5',
-      hash: 'SHA-256'
-    },
-    false,
-    ['sign']
-  );
-
-  const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(signatureString));
-  const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signature)));
-
-  // Create the Authorization header
-  const keyId = `https://gunac.ar/users/${user.username}#main-key`;
-  const headers = signatureParts.map(part => part.split(': ')[0]).join(' ');
-  
-  const authorization = `Signature keyId="${keyId}",algorithm="rsa-sha256",headers="${headers}",signature="${signatureB64}"`;
-
-  console.log(`✅ Request signed successfully`);
-
-  // Send the signed request
-  return fetch(url, {
-    method,
-    headers: {
-      'Content-Type': 'application/activity+json',
-      'Accept': 'application/activity+json',
-      'Date': date,
-      'Authorization': authorization,
-      ...(digestHeader && { 'Digest': digestHeader })
-    },
-    body,
-    duplex: 'half'
-  });
 }
 
 export async function sendFollowActivity(followerId: string, followingUsername: string, followingDomain: string): Promise<boolean> {
