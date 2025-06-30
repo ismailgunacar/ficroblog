@@ -2846,113 +2846,80 @@ app.post('/remote-follow', async (c) => {
   await client.connect();
   const db = client.db();
   const users = db.collection<User>('users');
-  
+
   const session = getCookie(c, 'session');
   if (!session || session.length !== 24 || !/^[a-fA-F0-9]+$/.test(session)) {
     return c.json({ success: false, error: 'Not logged in' });
   }
-  
+
   const currentUser = await users.findOne({ _id: new ObjectId(session) });
   if (!currentUser) {
     return c.json({ success: false, error: 'User not found' });
   }
-  
+
   const body = await c.req.parseBody();
   const remoteUser = typeof body['remoteUser'] === 'string' ? body['remoteUser'] : '';
-  
+
   if (!remoteUser || !remoteUser.includes('@')) {
     return c.json({ success: false, error: 'Invalid remote user format. Use username@domain' });
   }
-  
+
   const [username, domain] = remoteUser.split('@');
   if (!username || !domain) {
     return c.json({ success: false, error: 'Invalid remote user format. Use username@domain' });
   }
-  
+
   try {
     // First, try to discover the remote user via WebFinger
     const webfingerUrl = `https://${domain}/.well-known/webfinger?resource=acct:${username}@${domain}`;
     const webfingerResponse = await fetch(webfingerUrl);
-    
     if (!webfingerResponse.ok) {
       return c.json({ success: false, error: `Could not find user ${remoteUser} on ${domain}` });
     }
-    
     const webfinger = await webfingerResponse.json();
-    
     // Find the actor URL from WebFinger links
     const actorLink = webfinger.links?.find((link: any) => 
       link.rel === 'self' && link.type === 'application/activity+json'
     );
-    
     if (!actorLink?.href) {
       return c.json({ success: false, error: `Could not find actor URL for ${remoteUser}` });
     }
-    
     const actorUrl = actorLink.href;
-    
     // Get the actor profile to find their inbox
     const actorResponse = await fetch(actorUrl, {
       headers: {
         'Accept': 'application/activity+json'
       }
     });
-    
     if (!actorResponse.ok) {
       return c.json({ success: false, error: `Could not fetch profile for ${remoteUser}` });
     }
-    
     const actor = await actorResponse.json();
     const inboxUrl = actor.inbox;
-    
     if (!inboxUrl) {
       return c.json({ success: false, error: `Could not find inbox for ${remoteUser}` });
     }
-    
-    // Create and send the Follow activity
-    const followActivity = {
-      "@context": "https://www.w3.org/ns/activitystreams",
-      "type": "Follow",
-      "actor": `https://${getDomainFromRequest(c)}/users/${currentUser.username}`,
-      "object": actorUrl,
-      "to": [actorUrl],
-      "cc": ["https://www.w3.org/ns/activitystreams#Public"]
-    };
 
-    // HTTP Signature signing
-    const inboxUrlObj = new URL(inboxUrl);
-    const date = new Date().toUTCString();
-    const body = JSON.stringify(followActivity);
-    const digest = crypto.createHash('sha256').update(body).digest('base64');
-    const digestHeader = `SHA-256=${digest}`;
-    const actorUrlSelf = `https://${getDomainFromRequest(c)}/users/${currentUser.username}`;
-    const signingString = [
-      `(request-target): post ${inboxUrlObj.pathname}`,
-      `host: ${inboxUrlObj.host}`,
-      `date: ${date}`,
-      `digest: ${digestHeader}`
-    ].join('\n');
-    const signer = crypto.createSign('RSA-SHA256');
-    signer.update(signingString);
-    signer.end();
-    const signature = signer.sign(currentUser.privateKey, 'base64');
-    const signatureHeader = `keyId=\"${actorUrlSelf}#main-key\",algorithm=\"rsa-sha256\",headers=\"(request-target) host date digest\",signature=\"${signature}\"`;
-
-    // Send the Follow activity to the remote user's inbox
-    const followResponse = await fetch(inboxUrl, {
-      method: 'POST',
-      headers: {
-        'Host': inboxUrlObj.host,
-        'Date': date,
-        'Digest': digestHeader,
-        'Signature': signatureHeader,
-        'Content-Type': 'application/activity+json',
-        'Accept': 'application/activity+json'
-      },
-      body
+    // Use Fedify's Follow class and sendActivity helper
+    const { Follow } = await import('@fedify/fedify');
+    const currentDomain = getDomainFromRequest(c); // or your domain logic
+    const actorUri = `https://${currentDomain}/users/${currentUser.username}`;
+    const follow = new Follow({
+      actor: actorUri,
+      object: actorUrl,
+      to: [actorUrl],
+      cc: ['https://www.w3.org/ns/activitystreams#Public']
     });
-    
-    if (followResponse.ok) {
+
+    // Debug: log outgoing activity and target inbox
+    console.log('Sending Follow activity to:', inboxUrl);
+    console.log('Follow Activity:', JSON.stringify(follow, null, 2));
+
+    // Use Fedify's sendActivity to sign and send
+    const response = await c.sendActivity({ username: currentUser.username }, [inboxUrl], follow);
+    console.log('Remote server response:', response.status, await response.text());
+
+    if (response.ok) {
       // Store the remote follow relationship in our database
       const follows = db.collection('follows');
       await follows.insertOne({
@@ -2963,7 +2930,6 @@ app.post('/remote-follow', async (c) => {
         remote: true,
         createdAt: new Date()
       });
-      
       return c.json({ 
         success: true, 
         message: `Successfully sent follow request to ${remoteUser}`,
@@ -2973,10 +2939,9 @@ app.post('/remote-follow', async (c) => {
     } else {
       return c.json({ 
         success: false, 
-        error: `Failed to send follow request to ${remoteUser}. Status: ${followResponse.status}` 
+        error: `Failed to send follow request to ${remoteUser}. Status: ${response.status}` 
       });
     }
-    
   } catch (error) {
     console.error('Error following remote user:', error);
     return c.json({ 
