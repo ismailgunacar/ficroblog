@@ -5,6 +5,7 @@ import { connectToDatabase } from "./db.ts";
 import { initializeCounters, createIndexes } from "./utils.ts";
 import "./logging.ts";
 import profileRoutes from './routes/profile';
+import activitypubRoutes from './routes/activitypub';
 
 // Initialize database connection and setup
 async function initializeApp() {
@@ -25,6 +26,7 @@ async function initializeApp() {
 
 // Mount profile routes
 app.route('/@', profileRoutes);
+app.route('/', activitypubRoutes);
 
 // Start the server
 initializeApp().then(() => {
