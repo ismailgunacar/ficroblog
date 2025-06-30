@@ -8,7 +8,8 @@ import { hashPassword, verifyPassword } from './auth';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { mountFedifyRoutes } from './fedify';
+import { mountFedifyRoutes, getFederation } from './fedify';
+import { Follow } from '@fedify/fedify';
 import { 
   createFollow, 
   removeFollow, 
@@ -2880,101 +2881,110 @@ app.post('/remote-follow', async (c) => {
   const remoteUser = typeof body['remoteUser'] === 'string' ? body['remoteUser'] : '';
   
   if (!remoteUser || !remoteUser.includes('@')) {
-    return c.json({ success: false, error: 'Invalid remote user format. Use username@domain' });
+    return c.json({ success: false, error: 'Invalid remote user format. Use @username@domain or username@domain' });
   }
   
-  const [username, domain] = remoteUser.split('@');
-  if (!username || !domain) {
-    return c.json({ success: false, error: 'Invalid remote user format. Use username@domain' });
+  // Handle both @username@domain and username@domain formats
+  const cleanRemoteUser = remoteUser.startsWith('@') ? remoteUser.slice(1) : remoteUser;
+  const parts = cleanRemoteUser.split('@');
+  
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    return c.json({ success: false, error: 'Invalid remote user format. Use @username@domain or username@domain' });
   }
+  
+  const [username, domain] = parts;
   
   try {
-    // First, try to discover the remote user via WebFinger
-    const webfingerUrl = `https://${domain}/.well-known/webfinger?resource=acct:${username}@${domain}`;
-    const webfingerResponse = await fetch(webfingerUrl);
+    // Get the federation instance
+    const federation = getFederation();
     
-    if (!webfingerResponse.ok) {
-      return c.json({ success: false, error: `Could not find user ${remoteUser} on ${domain}` });
-    }
+    // Create Fedify context
+    const ctx = federation.createContext(c.req.raw, undefined);
     
-    const webfinger = await webfingerResponse.json();
-    
-    // Find the actor URL from WebFinger links
-    const actorLink = webfinger.links?.find((link: any) => 
-      link.rel === 'self' && link.type === 'application/activity+json'
-    );
-    
-    if (!actorLink?.href) {
-      return c.json({ success: false, error: `Could not find actor URL for ${remoteUser}` });
-    }
-    
-    const actorUrl = actorLink.href;
-    
-    // Get the actor profile to find their inbox
-    const actorResponse = await fetch(actorUrl, {
-      headers: {
-        'Accept': 'application/activity+json'
+    // First, try to discover the remote user via WebFinger (using Fedify's method)
+    try {
+      const remoteActor = await ctx.lookupObject(`acct:${username}@${domain}`);
+      
+      if (!remoteActor) {
+        return c.json({ success: false, error: `Could not find user ${remoteUser}` });
       }
-    });
-    
-    if (!actorResponse.ok) {
-      return c.json({ success: false, error: `Could not fetch profile for ${remoteUser}` });
-    }
-    
-    const actor = await actorResponse.json();
-    const inboxUrl = actor.inbox;
-    
-    if (!inboxUrl) {
-      return c.json({ success: false, error: `Could not find inbox for ${remoteUser}` });
-    }
-    
-    // Create and send the Follow activity
-    const followActivity = {
-      "@context": "https://www.w3.org/ns/activitystreams",
-      "type": "Follow",
-      "actor": `https://${getDomainFromRequest(c)}/users/${currentUser.username}`,
-      "object": actorUrl,
-      "to": [actorUrl],
-      "cc": ["https://www.w3.org/ns/activitystreams#Public"]
-    };
-    
-    // Send the Follow activity to the remote user's inbox
-    const followResponse = await fetch(inboxUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/activity+json',
-        'Accept': 'application/activity+json'
-      },
-      body: JSON.stringify(followActivity)
-    });
-    
-    if (followResponse.ok) {
-      // Store the remote follow relationship in our database
+      
+      // Check if we're already following this user
       const follows = db.collection('follows');
+      const existingFollow = await follows.findOne({
+        followerId: currentUser._id.toString(),
+        followingId: remoteActor.id?.href
+      });
+      
+      if (existingFollow) {
+        return c.json({ success: false, error: `Already following ${remoteUser}` });
+      }
+      
+      // Create a Follow activity using Fedify's Follow class
+      const followActivity = new Follow({
+        id: new URL(`https://${ctx.hostname}/activities/${new ObjectId()}`),
+        actor: ctx.getActorUri(currentUser.username),
+        object: remoteActor.id,
+        to: remoteActor.id,
+      });
+      
+      // Send the Follow activity using Fedify's sendActivity method
+      console.log(`Sending follow request from ${currentUser.username} to ${remoteUser}`);
+      console.log(`Remote actor ID: ${remoteActor.id?.href}`);
+      console.log(`Remote actor inbox: ${remoteActor.inbox?.href}`);
+      
+      await ctx.sendActivity({ username: currentUser.username }, remoteActor, followActivity);
+      
+      console.log(`Successfully sent follow request to ${remoteUser}`);
+      
+      // Store the remote follow relationship in our database
       await follows.insertOne({
-        followerId: currentUser._id?.toString(),
-        followingId: `${username}@${domain}`,
-        followingUrl: actorUrl,
-        followingInbox: inboxUrl,
+        followerId: currentUser._id.toString(),
+        followingId: remoteActor.id?.href,
+        followingHandle: remoteUser,
+        followingName: remoteActor.name || username,
+        followingUrl: remoteActor.id?.href,
+        followingInbox: remoteActor.inbox?.href,
         remote: true,
+        pending: true, // Will be set to false when we receive Accept
         createdAt: new Date()
       });
       
       return c.json({ 
         success: true, 
-        message: `Successfully sent follow request to ${remoteUser}`,
-        actorUrl,
-        inboxUrl
+        message: `Follow request sent to ${remoteUser}. Waiting for acceptance.`
       });
-    } else {
+      
+    } catch (lookupError) {
+      console.error('Error looking up remote actor:', lookupError);
       return c.json({ 
         success: false, 
-        error: `Failed to send follow request to ${remoteUser}. Status: ${followResponse.status}` 
+        error: `Could not find user ${remoteUser}. Make sure the username and domain are correct.`
       });
     }
     
   } catch (error) {
     console.error('Error following remote user:', error);
+    
+    // Check if it's a network/HTTP error with status code
+    if (error instanceof Error) {
+      if (error.message.includes('401')) {
+        return c.json({ 
+          success: false, 
+          error: `❌ Failed to send follow request to ${remoteUser}. Status: 401 - Authentication failed. This may be due to HTTP signature issues.` 
+        });
+      }
+      
+      const statusMatch = error.message.match(/status[:\s]+(\d+)/i);
+      if (statusMatch) {
+        const status = statusMatch[1];
+        return c.json({ 
+          success: false, 
+          error: `❌ Failed to send follow request to ${remoteUser}. Status: ${status}` 
+        });
+      }
+    }
+    
     return c.json({ 
       success: false, 
       error: `Error following ${remoteUser}: ${error instanceof Error ? error.message : 'Unknown error'}` 

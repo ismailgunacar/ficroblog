@@ -420,9 +420,21 @@ export function createFederationInstance(mongoClient: any) {
   return federation;
 }
 
+// Global federation instance
+let globalFederation: any = null;
+
 // Export a function to mount Fedify's ActivityPub endpoints into your Hono app
 export function mountFedifyRoutes(app: Hono, mongoClient: any) {
   const federation = createFederationInstance(mongoClient);
+  globalFederation = federation; // Store for later use
   // Mount the Fedify federation middleware at root
   app.use('*', fedifyHonoMiddleware(federation, () => ({})));
-} 
+}
+
+// Export function to get the federation instance
+export function getFederation() {
+  if (!globalFederation) {
+    throw new Error('Federation not initialized. Call mountFedifyRoutes first.');
+  }
+  return globalFederation;
+}
