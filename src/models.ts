@@ -23,6 +23,10 @@ export interface Post {
   repostCount?: number;
   replyCount?: number;
   remote?: boolean;  // Whether this is a remote post
+  remotePostId?: string; // Original post ID from remote server
+  remoteActor?: string;  // Actor URL from remote server
+  federated?: boolean;   // Whether this post has been federated
+  federatedFrom?: string; // Where this post was federated from
 }
 
 export interface Follow {
