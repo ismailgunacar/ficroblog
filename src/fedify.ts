@@ -184,9 +184,27 @@ export function createFederationInstance(mongoClient: any) {
     const users = db.collection('users');
     const keys = db.collection('keys');
     
+    console.log(`🔍 Looking for user with username: "${identifier}"`);
+    
+    // Debug: Let's see what users exist
+    const allUsers = await users.find({}).limit(5).toArray();
+    console.log(`📊 Available users in database:`, allUsers.map(u => u.username));
+    
     const user = await users.findOne({ username: identifier });
     if (!user) {
-      console.log(`❌ User not found for identifier: ${identifier}`);
+      console.log(`❌ User not found for identifier: "${identifier}"`);
+      console.log(`🔍 Trying case-insensitive search...`);
+      
+      // Try case-insensitive search
+      const userCaseInsensitive = await users.findOne({ 
+        username: { $regex: new RegExp(`^${identifier}$`, 'i') } 
+      });
+      
+      if (userCaseInsensitive) {
+        console.log(`✅ Found user with case-insensitive search:`, userCaseInsensitive.username);
+        return [];
+      }
+      
       return [];
     }
     
