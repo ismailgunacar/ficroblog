@@ -38,7 +38,7 @@ class MongoDBKVStore {
 // Export a function to create and configure the federation instance
 export function createFederationInstance(mongoClient: any) {
   // Create the Federation instance with full configuration
-  const kvStore = new MongoDBKVStore(mongoClient, 'fongoblog2');
+  const kvStore = new MongoDBKVStore(mongoClient, mongoClient.db().databaseName || 'fongoblog2');
 
   const federation = createFederation({
     kv: kvStore,
@@ -48,7 +48,7 @@ export function createFederationInstance(mongoClient: any) {
 
   // Set up NodeInfo dispatcher
   federation.setNodeInfoDispatcher('/.well-known/nodeinfo/2.0', async (ctx) => {
-    const db = mongoClient.db('fongoblog2');
+    const db = mongoClient.db();
     const users = db.collection('users');
     const posts = db.collection('posts');
     
@@ -84,7 +84,7 @@ export function createFederationInstance(mongoClient: any) {
 
   // Set up object dispatcher for posts
   federation.setObjectDispatcher(Note, '/posts/{postId}', async (ctx, { postId }) => {
-    const db = mongoClient.db('fongoblog2');
+    const db = mongoClient.db();
     const posts = db.collection('posts');
     const users = db.collection('users');
     
@@ -108,7 +108,7 @@ export function createFederationInstance(mongoClient: any) {
 
   // Set up outbox dispatcher
   federation.setOutboxDispatcher('/users/{identifier}/outbox', async (ctx, identifier, cursor) => {
-    const db = mongoClient.db('fongoblog2');
+    const db = mongoClient.db();
     const posts = db.collection('posts');
     const users = db.collection('users');
     
@@ -150,7 +150,7 @@ export function createFederationInstance(mongoClient: any) {
   // Set up actor dispatcher with key pairs dispatcher
   federation
     .setActorDispatcher('/users/{identifier}', async (ctx, identifier) => {
-      const db = mongoClient.db('fongoblog2');
+      const db = mongoClient.db(); // Use default database from connection string
       const users = db.collection('users');
       
       const user = await users.findOne({ username: identifier });
@@ -180,7 +180,7 @@ export function createFederationInstance(mongoClient: any) {
     })
     .setKeyPairsDispatcher(async (ctx, identifier) => {
     console.log(`🔑 Key pairs dispatcher called for identifier: ${identifier}`);
-    const db = mongoClient.db('fongoblog2');
+    const db = mongoClient.db(); // Use default database from connection string
     const users = db.collection('users');
     const keys = db.collection('keys');
     
@@ -279,7 +279,7 @@ export function createFederationInstance(mongoClient: any) {
         return;
       }
       
-      const db = mongoClient.db('fongoblog2');
+      const db = mongoClient.db();
       const users = db.collection('users');
       const follows = db.collection('follows');
       
@@ -345,7 +345,7 @@ export function createFederationInstance(mongoClient: any) {
       const from = await accept.getActor(ctx);
       if (!from) return;
       
-      const db = mongoClient.db('fongoblog2');
+      const db = mongoClient.db();
       const follows = db.collection('follows');
       
       // Update the follow relationship to mark it as accepted
@@ -369,7 +369,7 @@ export function createFederationInstance(mongoClient: any) {
       const from = await create.getActor(ctx);
       if (!from) return;
       
-      const db = mongoClient.db('fongoblog2');
+      const db = mongoClient.db();
       const users = db.collection('users');
       const posts = db.collection('posts');
       
@@ -404,7 +404,7 @@ export function createFederationInstance(mongoClient: any) {
       const postId = objectUri?.split('/posts/')[1];
       
       if (postId) {
-        const db = mongoClient.db('fongoblog2');
+        const db = mongoClient.db();
         const posts = db.collection('posts');
         
         // Increment like count
@@ -424,7 +424,7 @@ export function createFederationInstance(mongoClient: any) {
       const postId = objectUri?.split('/posts/')[1];
       
       if (postId) {
-        const db = mongoClient.db('fongoblog2');
+        const db = mongoClient.db();
         const posts = db.collection('posts');
         
         // Increment repost count
