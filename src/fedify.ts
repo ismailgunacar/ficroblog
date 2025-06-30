@@ -160,6 +160,12 @@ export function createFederationInstance(mongoClient: any) {
       
       // Get the actor's key pairs
       const keys = await ctx.getActorKeyPairs(identifier);
+      console.log(`🔑 Actor dispatcher: got ${keys.length} keys for ${identifier}`);
+      
+      if (keys.length > 0) {
+        console.log(`🔑 First key type:`, keys[0]?.cryptographicKey?.id);
+        console.log(`🔑 First key multikey:`, keys[0]?.multikey?.id);
+      }
       
       return new Person({
         id: ctx.getActorUri(identifier),
