@@ -64,7 +64,7 @@ app.post('/profile/edit', async (c) => {
 });
 
 // Mount Fedify routes for ActivityPub
-await mountFedifyRoutes(app);
+mountFedifyRoutes(app, client);
 
 // Start server
 const port = process.env.PORT ? parseInt(process.env.PORT) : 3000;

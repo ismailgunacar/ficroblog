@@ -344,3 +344,71 @@
   font-size: 0.8em;
   margin-left: 0.5em;
 }
+
+/* Setup page styles */
+.setup-container {
+  max-width: 500px;
+  margin: 2rem auto;
+  padding: 2rem;
+  background: var(--card-background-color, #fff);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.setup-form .form-group {
+  margin-bottom: 1.5rem;
+}
+
+.setup-form label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.setup-form input[type="text"],
+.setup-form input[type="password"],
+.setup-form textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 2px solid var(--muted-border-color);
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: border-color 0.2s ease;
+}
+
+.setup-form input[type="text"]:focus,
+.setup-form input[type="password"]:focus,
+.setup-form textarea:focus {
+  outline: none;
+  border-color: var(--primary-color, #007bff);
+}
+
+.setup-form small {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--muted-color);
+  font-size: 0.875rem;
+}
+
+.setup-form .btn {
+  width: 100%;
+  padding: 1rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.success-container {
+  max-width: 500px;
+  margin: 2rem auto;
+  padding: 2rem;
+  text-align: center;
+  background: var(--card-background-color, #fff);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.success-container h1 {
+  color: var(--success-color, #28a745);
+  margin-bottom: 1rem;
+}

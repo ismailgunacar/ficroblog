@@ -30,3 +30,12 @@ export interface Follow {
   followingId: string;
   createdAt: Date;
 }
+
+export interface Key {
+  _id?: ObjectId;
+  user_id: ObjectId;
+  type: 'RSASSA-PKCS1-v1_5' | 'Ed25519';
+  private_key: string; // JSON stringified JWK
+  public_key: string;  // JSON stringified JWK
+  created: string;
+}

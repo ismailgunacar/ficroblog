@@ -1,4 +1,4 @@
-import { createFederation, MemoryKvStore, Person, Note, Follow, Accept, Create, Like, Announce, Image } from '@fedify/fedify';
+import { createFederation, MemoryKvStore, Person, Note, Follow, Accept, Create, Like, Announce, Image, generateCryptoKeyPair, exportJwk, importJwk } from '@fedify/fedify';
 import { federation as fedifyHonoMiddleware } from '@fedify/fedify/x/hono';
 import type { Hono } from 'hono';
 import type { User, Post } from './models';
@@ -80,30 +80,7 @@ export function createFederationInstance(mongoClient: any) {
     };
   });
 
-  // Set up actor dispatcher
-  federation.setActorDispatcher('/users/{identifier}', async (ctx, identifier) => {
-    const db = mongoClient.db('fongoblog2');
-    const users = db.collection('users');
-    
-    const user = await users.findOne({ username: identifier });
-    if (!user) return null;
 
-    const domain = ctx.hostname;
-    
-    return new Person({
-      id: ctx.getActorUri(identifier),
-      preferredUsername: user.username,
-      name: user.name || user.username,
-      summary: user.bio || '',
-      inbox: ctx.getInboxUri(identifier),
-      outbox: ctx.getOutboxUri(identifier),
-      followers: ctx.getFollowersUri(identifier),
-      following: ctx.getFollowingUri(identifier),
-      url: new URL(`https://${domain}/users/${user.username}`),
-      icon: user.avatarUrl ? new Image({ url: new URL(user.avatarUrl) }) : undefined,
-      image: user.headerUrl ? new Image({ url: new URL(user.headerUrl) }) : undefined
-    });
-  });
 
   // Set up object dispatcher for posts
   federation.setObjectDispatcher(Note, '/posts/{postId}', async (ctx, { postId }) => {
@@ -170,55 +147,195 @@ export function createFederationInstance(mongoClient: any) {
     };
   });
 
+  // Set up actor dispatcher with key pairs dispatcher
+  federation
+    .setActorDispatcher('/users/{identifier}', async (ctx, identifier) => {
+      const db = mongoClient.db('fongoblog2');
+      const users = db.collection('users');
+      
+      const user = await users.findOne({ username: identifier });
+      if (!user) return null;
+
+      const domain = ctx.hostname;
+      
+      // Get the actor's key pairs
+      const keys = await ctx.getActorKeyPairs(identifier);
+      
+      return new Person({
+        id: ctx.getActorUri(identifier),
+        preferredUsername: user.username,
+        name: user.name || user.username,
+        summary: user.bio || '',
+        inbox: ctx.getInboxUri(identifier),
+        outbox: ctx.getOutboxUri(identifier),
+        followers: ctx.getFollowersUri(identifier),
+        following: ctx.getFollowingUri(identifier),
+        url: new URL(`https://${domain}/users/${user.username}`),
+        icon: user.avatarUrl ? new Image({ url: new URL(user.avatarUrl) }) : undefined,
+        image: user.headerUrl ? new Image({ url: new URL(user.headerUrl) }) : undefined,
+        // Add cryptographic keys for signature verification
+        publicKey: keys[0]?.cryptographicKey,
+        assertionMethods: keys.map((k) => k.multikey),
+      });
+    })
+    .setKeyPairsDispatcher(async (ctx, identifier) => {
+    const db = mongoClient.db('fongoblog2');
+    const users = db.collection('users');
+    const keys = db.collection('keys');
+    
+    const user = await users.findOne({ username: identifier });
+    if (!user) return [];
+    
+    // Get existing keys or generate new ones
+    let rsaKey = await keys.findOne({ user_id: user._id, type: 'RSASSA-PKCS1-v1_5' });
+    let ed25519Key = await keys.findOne({ user_id: user._id, type: 'Ed25519' });
+    
+    const keyPairs = [];
+    
+    // Generate RSA key if it doesn't exist
+    if (!rsaKey) {
+      const { privateKey, publicKey } = await generateCryptoKeyPair('RSASSA-PKCS1-v1_5', {
+        modulusLength: 2048,
+        publicExponent: new Uint8Array([0x01, 0x00, 0x01]),
+        hash: 'SHA-256',
+      });
+      
+      rsaKey = {
+        user_id: user._id,
+        type: 'RSASSA-PKCS1-v1_5',
+        private_key: JSON.stringify(await exportJwk(privateKey)),
+        public_key: JSON.stringify(await exportJwk(publicKey)),
+        created: new Date().toISOString(),
+      };
+      
+      await keys.insertOne(rsaKey);
+    }
+    
+    // Generate Ed25519 key if it doesn't exist
+    if (!ed25519Key) {
+      const { privateKey, publicKey } = await generateCryptoKeyPair('Ed25519');
+      
+      ed25519Key = {
+        user_id: user._id,
+        type: 'Ed25519',
+        private_key: JSON.stringify(await exportJwk(privateKey)),
+        public_key: JSON.stringify(await exportJwk(publicKey)),
+        created: new Date().toISOString(),
+      };
+      
+      await keys.insertOne(ed25519Key);
+    }
+    
+    // Return key pairs
+    if (rsaKey) {
+      const privateKey = await importJwk(JSON.parse(rsaKey.private_key), 'RSASSA-PKCS1-v1_5');
+      const publicKey = await importJwk(JSON.parse(rsaKey.public_key), 'RSASSA-PKCS1-v1_5');
+      keyPairs.push({ privateKey, publicKey });
+    }
+    
+    if (ed25519Key) {
+      const privateKey = await importJwk(JSON.parse(ed25519Key.private_key), 'Ed25519');
+      const publicKey = await importJwk(JSON.parse(ed25519Key.public_key), 'Ed25519');
+      keyPairs.push({ privateKey, publicKey });
+    }
+    
+    return keyPairs;
+  });
+
   // Set up inbox listeners
   federation
     .setInboxListeners('/users/{identifier}/inbox', '/inbox')
     .on(Follow, async (ctx, follow) => {
       const from = await follow.getActor(ctx);
-      if (!from) return;
+      if (!from) {
+        console.log('Could not get actor from follow activity');
+        return;
+      }
       
       const db = mongoClient.db('fongoblog2');
       const users = db.collection('users');
       const follows = db.collection('follows');
       
-      // Extract username from the follow target
-      const targetUri = follow.objectId?.href;
-      const username = targetUri?.split('/users/')[1];
+      // Get the target user from the context (the recipient)
+      const recipient = ctx.getRecipient();
+      if (!recipient?.identifier) {
+        console.log('No recipient found in context');
+        return;
+      }
       
-      if (!username) return;
-      
+      const username = recipient.identifier;
       const targetUser = await users.findOne({ username });
-      if (!targetUser) return;
+      if (!targetUser) {
+        console.log(`Target user ${username} not found`);
+        return;
+      }
+      
+      console.log(`Received follow request from ${from.preferredUsername} to ${username}`);
       
       // Check if already following
       const existingFollow = await follows.findOne({
-        followerId: from.id?.href?.split('/users/')[1],
-        followingId: targetUser._id?.toString()
+        followerId: from.id?.href,
+        followingId: targetUser._id.toString()
       });
       
       if (!existingFollow) {
         // Create follow relationship
         await follows.insertOne({
-          followerId: from.id?.href?.split('/users/')[1],
-          followingId: targetUser._id?.toString(),
+          followerId: from.id?.href,
+          followingId: targetUser._id.toString(),
+          followerHandle: `${from.preferredUsername}@${from.id?.hostname}`,
+          followerName: from.name || from.preferredUsername,
+          followerUrl: from.id?.href,
+          followerInbox: from.inbox?.href,
+          remote: true,
+          pending: false, // Auto-accept for now
           createdAt: new Date()
         });
+        
+        console.log(`Created follow relationship: ${from.preferredUsername} -> ${username}`);
+      } else {
+        console.log(`Follow relationship already exists: ${from.preferredUsername} -> ${username}`);
       }
       
       // Send Accept activity back
       const accept = new Accept({
-        actor: new URL(`https://${ctx.hostname}/users/${username}`),
+        id: new URL(`https://${ctx.hostname}/activities/${new ObjectId()}`),
+        actor: ctx.getActorUri(username),
         object: follow,
-        to: [from.id?.href || ''],
-        cc: ['https://www.w3.org/ns/activitystreams#Public']
+        to: from.id,
       });
       
-      // Send the accept activity
+      // Send the accept activity using the correct sendActivity signature
       try {
-        await ctx.sendActivity({ username }, [from.id?.href || ''], accept);
+        await ctx.sendActivity({ username }, from.id?.href, accept);
+        console.log(`Sent Accept activity to ${from.preferredUsername}`);
       } catch (error) {
         console.error('Error sending accept activity:', error);
       }
+    })
+    .on(Accept, async (ctx, accept) => {
+      // Handle Accept activities (when someone accepts our follow request)
+      const from = await accept.getActor(ctx);
+      if (!from) return;
+      
+      const db = mongoClient.db('fongoblog2');
+      const follows = db.collection('follows');
+      
+      // Update the follow relationship to mark it as accepted
+      await follows.updateOne(
+        { 
+          followingId: from.id?.href,
+          pending: true 
+        },
+        { 
+          $set: { 
+            pending: false,
+            acceptedAt: new Date()
+          } 
+        }
+      );
+      
+      console.log(`Received Accept from ${from.preferredUsername}`);
     })
     .on(Create, async (ctx, create) => {
       // Handle incoming posts
