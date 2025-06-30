@@ -1,0 +1,346 @@
+/* Main application styles */
+:root { 
+  color-scheme: light; 
+}
+
+/* Layout */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+/* Profile section */
+#profile-card { 
+  margin: 2em 0;
+  padding: 1.5em;
+  border-radius: 8px;
+  border: 1px solid var(--muted-border-color);
+}
+
+#header-img { 
+  max-width: none;
+  width: calc(100% + 3em);
+  height: 300px;
+  object-fit: cover;
+  border-radius: 8px 8px 0px 0px;
+  margin: -1.5em -1.5em 2em -1.5em;
+  position: relative;
+}
+
+#avatar-img { 
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-right: 1em;
+  vertical-align: top;
+}
+
+.profile-info {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+#profile-name {
+  margin: 0 0 0.2em 0;
+  font-size: 1.5em;
+  font-weight: 700;
+}
+
+#profile-username {
+  color: var(--muted-color);
+  display: inline;
+}
+
+#profile-bio {
+  margin: 0 0 1em 0;
+}
+
+.profile-stats {
+  display: inline;
+  margin-left: 1em;
+  vertical-align: middle;
+}
+
+.stat-item {
+  display: inline;
+  margin-right: 1em;
+}
+
+.stat-number {
+  font-weight: bold;
+}
+
+.profile-actions {
+  margin-top: 1em;
+  border-top: 1px solid var(--muted-border-color);
+  padding-top: 1em;
+  text-align: right;
+}
+
+/* Login form styling */
+#inline-login {
+  display: inline-block;
+}
+
+#inline-login .grid {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+#login-toggle {
+  min-width: 100px;
+  width: 100px;
+  flex-shrink: 0;
+}
+
+#login-password {
+  width: 180px;
+  flex-shrink: 0;
+}
+
+/* Timeline and posts */
+.timeline-container {
+  margin-top: 2em;
+}
+
+.post-form {
+  margin-bottom: 2em;
+  padding: 1.5em;
+  border: 1px solid var(--muted-border-color);
+  border-radius: 12px;
+  background: var(--card-background-color, #fff);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.post-form .grid {
+  gap: 1rem;
+  display: block;
+}
+
+.post-form input[name="content"] {
+  min-height: 80px;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.5;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.post-form button[type="submit"] {
+  align-self: flex-end;
+  min-width: 100px;
+  margin-top: 1rem;
+}
+
+.timeline-list {
+  list-style: none !important;
+  padding: 0;
+  margin: 0;
+}
+
+.timeline-list li {
+  list-style: none !important;
+  list-style-type: none !important;
+  margin-bottom: 1.5em;
+  padding: 1.5em;
+  border: 1px solid var(--muted-border-color);
+  border-radius: 12px;
+  background: var(--card-background-color, #fff);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.timeline-list li header {
+  margin-bottom: 0.75em;
+  padding-bottom: 0.75em;
+  border-bottom: 1px solid var(--muted-border-color);
+}
+
+.post-author {
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--primary-color);
+  font-size: 1.1em;
+}
+
+.post-author:hover {
+  text-decoration: underline;
+}
+
+.timeline-list li p {
+  margin: 0 0 1em 0;
+  line-height: 1.6;
+  font-size: 1.05em;
+}
+
+.post-meta {
+  margin-top: 0.75em;
+  font-size: 0.9em;
+  color: var(--muted-color);
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+
+.permalink-link {
+  color: var(--muted-color);
+  text-decoration: none;
+  font-size: 0.9em;
+}
+
+.permalink-link:hover {
+  text-decoration: underline;
+}
+
+/* Edit profile form styling */
+#edit-name,
+#edit-username,
+#edit-bio,
+#edit-avatarUrl,
+#edit-headerUrl {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 0.5em;
+  display: block;
+}
+
+#edit-bio {
+  min-height: 80px;
+  resize: none;
+}
+
+.profile-info.editing {
+  display: block;
+  width: 100%;
+}
+
+/* Remote follow card */
+.remote-follow-card {
+  margin-bottom: 2em;
+  padding: 1.5em;
+  border: 1px solid var(--muted-border-color);
+  border-radius: 12px;
+  background: var(--card-background-color, #fff);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.remote-follow-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.remote-follow-form input {
+  flex: 1;
+  min-width: 200px;
+}
+
+.remote-follow-form button {
+  padding: 0.5rem 1rem;
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .profile-stats {
+    display: block;
+    margin-left: 0;
+    margin-top: 0.5em;
+  }
+  
+  .stat-item {
+    display: inline-block;
+    margin-right: 1em;
+  }
+  
+  .remote-follow-form {
+    flex-direction: column;
+  }
+  
+  .remote-follow-form input {
+    width: 100%;
+    margin-bottom: 0.5rem;
+  }
+}
+
+/* Federation Dashboard specific styles */
+.federation-dashboard {
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.federation-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.stat-card {
+  padding: 1.5rem;
+  border: 1px solid var(--muted-border-color);
+  border-radius: 8px;
+  background: var(--card-background-color, #fff);
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: bold;
+  color: var(--primary-color);
+  margin-bottom: 0.5rem;
+}
+
+.stat-label {
+  color: var(--muted-color);
+  font-size: 0.9rem;
+}
+
+.activity-log {
+  background: var(--card-background-color, #fff);
+  border: 1px solid var(--muted-border-color);
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.activity-item {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--muted-border-color);
+}
+
+.activity-item:last-child {
+  border-bottom: none;
+}
+
+.activity-type {
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
+.activity-details {
+  color: var(--muted-color);
+  font-size: 0.9rem;
+  margin-top: 0.25rem;
+}
+
+.back-link {
+  margin-bottom: 1em;
+}
+
+/* Remote post styling */
+.timeline-list li[data-remote="true"] {
+  border-left: 4px solid #007bff;
+  background: #f8f9fa;
+}
+
+.remote-indicator {
+  color: #007bff;
+  font-size: 0.8em;
+  margin-left: 0.5em;
+}
