@@ -1,0 +1,28 @@
+{
+  "name": "fongoblog2",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "watch": "nodemon",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "migrate": "tsx migrate-posts.ts"
+  },
+  "dependencies": {
+    "@fedify/fedify": "^1.7.0",
+    "@hono/node-server": "^1.14.4",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "hono": "^4.1.0",
+    "http-signature": "^1.4.0",
+    "mongodb": "^6.17.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.4.5"
+  }
+}
