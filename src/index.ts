@@ -21,6 +21,7 @@ import {
   getRecentFederationActivity
 } from './federation-utils';
 import { generateRSAKeyPair } from './keys';
+import crypto from 'node:crypto';
 
 dotenv.config();
 
@@ -1041,49 +1042,16 @@ function renderUserProfile({
           margin-bottom: 1em;
         }
         
-        /* Edit profile form styling */
-        #edit-name,
-        #edit-username,
-        #edit-bio,
-        #edit-avatarUrl,
-        #edit-headerUrl {
-          width: 100%;
-          box-sizing: border-box;
-          margin-bottom: 0.5em;
-          display: block;
+        .permalink-link {
+          color: var(--muted-color);
+          text-decoration: none;
+          font-size: 0.9em;
         }
         
-        #edit-bio {
-          min-height: 80px;
-          resize: none;
-        }
-        
-        /* When in edit mode, make profile-info full width */
-        .profile-info.editing {
-          display: block;
-          width: 100%;
+        .permalink-link:hover {
+          text-decoration: underline;
         }
       </style>
-      <script>
-        async function toggleFollow() {
-          const button = document.getElementById('follow-btn');
-          const response = await fetch('/@${profileUser.username}/follow', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-          });
-          const data = await response.json();
-          
-          if (data.success) {
-            if (data.following) {
-              button.textContent = 'Unfollow';
-              button.className = 'outline';
-            } else {
-              button.textContent = 'Follow';
-              button.className = 'primary';
-            }
-          }
-        }
-      </script>
     </head>
     <body class="container">
       <article id="profile-card" class="card">
@@ -1342,14 +1310,27 @@ function renderPostPermalink({
           margin-bottom: 1em;
         }
         
-        .permalink-link {
-          color: var(--muted-color);
-          text-decoration: none;
-          font-size: 0.9em;
+        /* Edit profile form styling */
+        #edit-name,
+        #edit-username,
+        #edit-bio,
+        #edit-avatarUrl,
+        #edit-headerUrl {
+          width: 100%;
+          box-sizing: border-box;
+          margin-bottom: 0.5em;
+          display: block;
         }
         
-        .permalink-link:hover {
-          text-decoration: underline;
+        #edit-bio {
+          min-height: 80px;
+          resize: none;
+        }
+        
+        /* When in edit mode, make profile-info full width */
+        .profile-info.editing {
+          display: block;
+          width: 100%;
         }
       </style>
     </head>
@@ -2937,15 +2918,38 @@ app.post('/remote-follow', async (c) => {
       "to": [actorUrl],
       "cc": ["https://www.w3.org/ns/activitystreams#Public"]
     };
-    
+
+    // HTTP Signature signing
+    const inboxUrlObj = new URL(inboxUrl);
+    const date = new Date().toUTCString();
+    const body = JSON.stringify(followActivity);
+    const digest = crypto.createHash('sha256').update(body).digest('base64');
+    const digestHeader = `SHA-256=${digest}`;
+    const actorUrlSelf = `https://${getDomainFromRequest(c)}/users/${currentUser.username}`;
+    const signingString = [
+      `(request-target): post ${inboxUrlObj.pathname}`,
+      `host: ${inboxUrlObj.host}`,
+      `date: ${date}`,
+      `digest: ${digestHeader}`
+    ].join('\n');
+    const signer = crypto.createSign('RSA-SHA256');
+    signer.update(signingString);
+    signer.end();
+    const signature = signer.sign(currentUser.privateKey, 'base64');
+    const signatureHeader = `keyId=\"${actorUrlSelf}#main-key\",algorithm=\"rsa-sha256\",headers=\"(request-target) host date digest\",signature=\"${signature}\"`;
+
     // Send the Follow activity to the remote user's inbox
     const followResponse = await fetch(inboxUrl, {
       method: 'POST',
       headers: {
+        'Host': inboxUrlObj.host,
+        'Date': date,
+        'Digest': digestHeader,
+        'Signature': signatureHeader,
         'Content-Type': 'application/activity+json',
         'Accept': 'application/activity+json'
       },
-      body: JSON.stringify(followActivity)
+      body
     });
     
     if (followResponse.ok) {
