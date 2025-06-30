@@ -17,6 +17,7 @@ import { federation as fedifyHonoMiddleware } from "@fedify/fedify/x/hono";
 import type { Hono } from "hono";
 import { MongoClient, ObjectId } from "mongodb";
 import type { Post, User } from "./models";
+import { getDomainAndProtocolFromRequest } from "./utils/domain";
 
 // MongoDB-based KV store for Fedify
 class MongoDBKVStore {
@@ -112,12 +113,14 @@ export function createFederationInstance(mongoClient: MongoClient) {
 			const author = await users.findOne({ _id: post.userId });
 			if (!author) return null;
 
-			const domain = ctx.hostname;
+			const { protocol, domain } = getDomainAndProtocolFromRequest(ctx);
 
 			return new Note({
-				id: new URL(`https://${domain}/posts/${post._id}`),
+				id: new URL(`${protocol}://${domain}/posts/${post._id}`),
 				content: post.content,
-				attributedTo: new URL(`https://${domain}/users/${author.username}`),
+				attributedTo: new URL(
+					`${protocol}://${domain}/users/${author.username}`,
+				),
 				to: ["https://www.w3.org/ns/activitystreams#Public"],
 				published: post.createdAt,
 				updated: post.updatedAt,
@@ -146,17 +149,19 @@ export function createFederationInstance(mongoClient: MongoClient) {
 				.limit(limit)
 				.toArray();
 
-			const domain = ctx.hostname;
+			const { protocol, domain } = getDomainAndProtocolFromRequest(ctx);
 
 			const activities = userPosts.map(
 				(post) =>
 					new Create({
-						id: new URL(`https://${domain}/posts/${post._id}/activity`),
-						actor: new URL(`https://${domain}/users/${user.username}`),
+						id: new URL(`${protocol}://${domain}/posts/${post._id}/activity`),
+						actor: new URL(`${protocol}://${domain}/users/${user.username}`),
 						object: new Note({
-							id: new URL(`https://${domain}/posts/${post._id}`),
+							id: new URL(`${protocol}://${domain}/posts/${post._id}`),
 							content: post.content,
-							attributedTo: new URL(`https://${domain}/users/${user.username}`),
+							attributedTo: new URL(
+								`${protocol}://${domain}/users/${user.username}`,
+							),
 							to: ["https://www.w3.org/ns/activitystreams#Public"],
 							published: post.createdAt,
 							updated: post.updatedAt,
@@ -182,7 +187,7 @@ export function createFederationInstance(mongoClient: MongoClient) {
 			const user = await users.findOne({ username: identifier });
 			if (!user) return null;
 
-			const domain = ctx.hostname;
+			const { protocol, domain } = getDomainAndProtocolFromRequest(ctx);
 
 			// Get the actor's key pairs
 			const keys = await ctx.getActorKeyPairs(identifier);
@@ -203,7 +208,7 @@ export function createFederationInstance(mongoClient: MongoClient) {
 				inbox: ctx.getInboxUri(identifier),
 				outbox: ctx.getOutboxUri(identifier),
 				followers: ctx.getFollowersUri(identifier),
-				url: new URL(`https://${domain}/users/${user.username}`),
+				url: new URL(`${protocol}://${domain}/users/${user.username}`),
 				icon: user.avatarUrl
 					? new Image({ url: new URL(user.avatarUrl) })
 					: undefined,
@@ -461,7 +466,7 @@ export function createFederationInstance(mongoClient: MongoClient) {
 
 			// Send Accept activity back
 			const accept = new Accept({
-				id: new URL(`https://${ctx.hostname}/activities/${new ObjectId()}`),
+				id: new URL(`${protocol}://${domain}/activities/${new ObjectId()}`),
 				actor: ctx.getActorUri(username),
 				object: follow,
 				to: from.id,

@@ -44,16 +44,22 @@ const client = new MongoClient(mongoUri);
 export { client };
 
 // Function to get domain from request context
-function getDomainFromRequest(c: {
+function getDomainAndProtocolFromRequest(c: {
 	req: { header: (name: string) => string | undefined };
-}): string {
+}): { protocol: string; domain: string } {
 	const host = c.req.header("host") || c.req.header("Host");
 	if (host) {
 		// Remove port if present (e.g., "localhost:3000" -> "localhost")
-		return host.split(":")[0];
+		return {
+			protocol: "http",
+			domain: host.split(":")[0],
+		};
 	}
 	// Fallback for development
-	return "localhost";
+	return {
+		protocol: "http",
+		domain: "localhost",
+	};
 }
 
 // --- AttachHandlers global script injection ---
@@ -1537,7 +1543,7 @@ app.get("/@*", async (c) => {
 	userMap.set(profileUser._id?.toString() || "", profileUser);
 
 	console.log("Rendering @username profile page for:", username);
-	const domain = getDomainFromRequest(c);
+	const { protocol, domain } = getDomainAndProtocolFromRequest(c);
 	return c.html(
 		renderUserProfile({
 			profileUser,
@@ -1636,7 +1642,7 @@ app.get("/user/:username", async (c) => {
 	userMap.set(profileUser._id?.toString() || "", profileUser);
 
 	console.log("Rendering profile page for:", username);
-	const domain = getDomainFromRequest(c);
+	const { protocol, domain } = getDomainAndProtocolFromRequest(c);
 	return c.html(
 		renderUserProfile({
 			profileUser,
@@ -1720,7 +1726,7 @@ app.get("/post/:postId", async (c) => {
 	});
 
 	console.log("Rendering post permalink page for:", postId);
-	const domain = getDomainFromRequest(c);
+	const { protocol, domain } = getDomainAndProtocolFromRequest(c);
 	return c.html(
 		renderPostPermalink({
 			post,
@@ -1743,7 +1749,7 @@ app.get("/setup", async (c) => {
 	const users = db.collection<User>("users");
 	const user = await users.findOne({});
 	if (user) return c.redirect("/");
-	const domain = getDomainFromRequest(c);
+	const domain = getDomainAndProtocolFromRequest(c).domain;
 	return c.html(`
     <!DOCTYPE html>
     <html lang="en" data-theme="light">
@@ -2014,7 +2020,7 @@ app.get("/", async (c) => {
 		c.req.header("x-requested-with") === "fetch" ||
 		c.req.header("accept")?.includes("application/json") ||
 		c.req.header("content-type")?.includes("application/json");
-	const domain = getDomainFromRequest(c);
+	const domain = getDomainAndProtocolFromRequest(c).domain;
 	const html = renderHome({
 		user,
 		postCount,
@@ -2100,7 +2106,7 @@ app.post("/", async (c) => {
 		if (!valid) {
 			if (wantsJson) {
 				console.log("Login failed, returning JSON response");
-				const domain = getDomainFromRequest(c);
+				const domain = getDomainAndProtocolFromRequest(c).domain;
 				return c.json({
 					success: false,
 					html: renderHome({
@@ -2117,7 +2123,7 @@ app.post("/", async (c) => {
 				});
 			}
 			console.log("Login failed, returning HTML response");
-			const domain = getDomainFromRequest(c);
+			const domain = getDomainAndProtocolFromRequest(c).domain;
 			return c.html(
 				renderHome({
 					user,
@@ -2137,7 +2143,7 @@ app.post("/", async (c) => {
 		}
 		if (wantsJson) {
 			console.log("Login successful, returning JSON response");
-			const domain = getDomainFromRequest(c);
+			const domain = getDomainAndProtocolFromRequest(c).domain;
 			return c.json({
 				success: true,
 				html: renderHome({
@@ -2171,7 +2177,7 @@ app.post("/", async (c) => {
 	});
 
 	// Mark the post as federated
-	const domain = getDomainFromRequest(c);
+	const domain = getDomainAndProtocolFromRequest(c).domain;
 	await markPostAsFederated(result.insertedId.toString());
 
 	return c.redirect("/");
@@ -2236,7 +2242,7 @@ app.post("/user/:username/follow", async (c) => {
 	}
 
 	// Follow
-	const domain = getDomainFromRequest(c);
+	const domain = getDomainAndProtocolFromRequest(c).domain;
 	await createFollow(currentUser.username || "", username);
 	return c.json({ success: true, following: true });
 });
@@ -2279,7 +2285,7 @@ app.post("/@:username/follow", async (c) => {
 	}
 
 	// Follow
-	const domain = getDomainFromRequest(c);
+	const domain = getDomainAndProtocolFromRequest(c).domain;
 	await createFollow(currentUser.username || "", username);
 	return c.json({ success: true, following: true });
 });
@@ -2312,7 +2318,7 @@ app.get("/.well-known/webfinger", async (c) => {
 
 	const username = resource.replace("acct:", "").split("@")[0];
 	const domain = resource.replace("acct:", "").split("@")[1];
-	const currentDomain = getDomainFromRequest(c);
+	const currentDomain = getDomainAndProtocolFromRequest(c).domain;
 
 	if (domain !== currentDomain) {
 		return c.json({ error: "Domain mismatch" }, 400);
@@ -2341,7 +2347,7 @@ app.get("/.well-known/webfinger", async (c) => {
 
 // NodeInfo endpoint
 app.get("/.well-known/nodeinfo", async (c) => {
-	const currentDomain = getDomainFromRequest(c);
+	const currentDomain = getDomainAndProtocolFromRequest(c).domain;
 	return c.json({
 		links: [
 			{
@@ -2463,7 +2469,7 @@ app.get("/.well-known/nodeinfo/2.0", async (c) => {
 // ActivityPub Outbox - serves user's public activities
 app.get("/users/:username/outbox", async (c) => {
 	const username = c.req.param("username");
-	const currentDomain = getDomainFromRequest(c);
+	const currentDomain = getDomainAndProtocolFromRequest(c).domain;
 
 	await client.connect();
 	const db = client.db();
@@ -2537,7 +2543,7 @@ app.get("/users/:username/outbox", async (c) => {
 app.get("/users/:username/statuses/:postId", async (c) => {
 	const username = c.req.param("username");
 	const postId = c.req.param("postId");
-	const currentDomain = getDomainFromRequest(c);
+	const currentDomain = getDomainAndProtocolFromRequest(c).domain;
 
 	await client.connect();
 	const db = client.db();
@@ -2612,7 +2618,7 @@ app.get("/users/:username/statuses/:postId", async (c) => {
 // ActivityPub Inbox - accepts incoming activities
 app.post("/users/:username/inbox", async (c) => {
 	const username = c.req.param("username");
-	const currentDomain = getDomainFromRequest(c);
+	const currentDomain = getDomainAndProtocolFromRequest(c).domain;
 
 	await client.connect();
 	const db = client.db();
@@ -2695,7 +2701,7 @@ app.post("/inbox", async (c) => {
 // Followers collection
 app.get("/users/:username/followers", async (c) => {
 	const username = c.req.param("username");
-	const currentDomain = getDomainFromRequest(c);
+	const currentDomain = getDomainAndProtocolFromRequest(c).domain;
 
 	await client.connect();
 	const db = client.db();
@@ -2725,7 +2731,7 @@ app.get("/users/:username/followers", async (c) => {
 // Following collection
 app.get("/users/:username/following", async (c) => {
 	const username = c.req.param("username");
-	const currentDomain = getDomainFromRequest(c);
+	const currentDomain = getDomainAndProtocolFromRequest(c).domain;
 
 	await client.connect();
 	const db = client.db();
@@ -2952,7 +2958,7 @@ app.get("/federation", async (c) => {
 		return c.redirect("/");
 	}
 
-	const domain = getDomainFromRequest(c);
+	const domain = getDomainAndProtocolFromRequest(c).domain;
 	const stats = await getFederationStats();
 	const recentActivity = await getRecentFederationActivity(10);
 	const federatedPosts = await getFederatedPosts(20, 0);
