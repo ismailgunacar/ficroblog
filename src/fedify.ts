@@ -254,8 +254,14 @@ export function createFederationInstance(mongoClient: any) {
     
     // Return key pairs
     if (rsaKey) {
-      const privateKey = await importJwk(JSON.parse(rsaKey.private_key), 'RSASSA-PKCS1-v1_5');
-      const publicKey = await importJwk(JSON.parse(rsaKey.public_key), 'RSASSA-PKCS1-v1_5');
+      const privateKey = await importJwk(JSON.parse(rsaKey.private_key), {
+        name: 'RSASSA-PKCS1-v1_5',
+        hash: 'SHA-256',
+      });
+      const publicKey = await importJwk(JSON.parse(rsaKey.public_key), {
+        name: 'RSASSA-PKCS1-v1_5',
+        hash: 'SHA-256',
+      });
       keyPairs.push({ privateKey, publicKey });
     }
     
