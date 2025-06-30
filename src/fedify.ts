@@ -101,12 +101,7 @@ export function createFederationInstance(mongoClient: any) {
       following: ctx.getFollowingUri(identifier),
       url: new URL(`https://${domain}/users/${user.username}`),
       icon: user.avatarUrl ? new Image({ url: new URL(user.avatarUrl) }) : undefined,
-      image: user.headerUrl ? new Image({ url: new URL(user.headerUrl) }) : undefined,
-      publicKey: user.publicKey ? {
-        id: `https://${domain}/users/${user.username}#main-key`,
-        owner: `https://${domain}/users/${user.username}`,
-        publicKeyPem: user.publicKey
-      } : undefined
+      image: user.headerUrl ? new Image({ url: new URL(user.headerUrl) }) : undefined
     });
   });
 
@@ -304,4 +299,4 @@ export function mountFedifyRoutes(app: Hono, mongoClient: any) {
   const federation = createFederationInstance(mongoClient);
   // Mount the Fedify federation middleware at root
   app.use('*', fedifyHonoMiddleware(federation, () => ({})));
-}
+} 

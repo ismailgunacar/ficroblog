@@ -21,7 +21,6 @@ import {
   getRecentFederationActivity
 } from './federation-utils';
 import { generateRSAKeyPair } from './keys';
-import crypto from 'node:crypto';
 
 dotenv.config();
 
@@ -1042,16 +1041,49 @@ function renderUserProfile({
           margin-bottom: 1em;
         }
         
-        .permalink-link {
-          color: var(--muted-color);
-          text-decoration: none;
-          font-size: 0.9em;
+        /* Edit profile form styling */
+        #edit-name,
+        #edit-username,
+        #edit-bio,
+        #edit-avatarUrl,
+        #edit-headerUrl {
+          width: 100%;
+          box-sizing: border-box;
+          margin-bottom: 0.5em;
+          display: block;
         }
         
-        .permalink-link:hover {
-          text-decoration: underline;
+        #edit-bio {
+          min-height: 80px;
+          resize: none;
+        }
+        
+        /* When in edit mode, make profile-info full width */
+        .profile-info.editing {
+          display: block;
+          width: 100%;
         }
       </style>
+      <script>
+        async function toggleFollow() {
+          const button = document.getElementById('follow-btn');
+          const response = await fetch('/@${profileUser.username}/follow', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          });
+          const data = await response.json();
+          
+          if (data.success) {
+            if (data.following) {
+              button.textContent = 'Unfollow';
+              button.className = 'outline';
+            } else {
+              button.textContent = 'Follow';
+              button.className = 'primary';
+            }
+          }
+        }
+      </script>
     </head>
     <body class="container">
       <article id="profile-card" class="card">
@@ -1310,27 +1342,14 @@ function renderPostPermalink({
           margin-bottom: 1em;
         }
         
-        /* Edit profile form styling */
-        #edit-name,
-        #edit-username,
-        #edit-bio,
-        #edit-avatarUrl,
-        #edit-headerUrl {
-          width: 100%;
-          box-sizing: border-box;
-          margin-bottom: 0.5em;
-          display: block;
+        .permalink-link {
+          color: var(--muted-color);
+          text-decoration: none;
+          font-size: 0.9em;
         }
         
-        #edit-bio {
-          min-height: 80px;
-          resize: none;
-        }
-        
-        /* When in edit mode, make profile-info full width */
-        .profile-info.editing {
-          display: block;
-          width: 100%;
+        .permalink-link:hover {
+          text-decoration: underline;
         }
       </style>
     </head>
@@ -2846,80 +2865,90 @@ app.post('/remote-follow', async (c) => {
   await client.connect();
   const db = client.db();
   const users = db.collection<User>('users');
-
+  
   const session = getCookie(c, 'session');
   if (!session || session.length !== 24 || !/^[a-fA-F0-9]+$/.test(session)) {
     return c.json({ success: false, error: 'Not logged in' });
   }
-
+  
   const currentUser = await users.findOne({ _id: new ObjectId(session) });
   if (!currentUser) {
     return c.json({ success: false, error: 'User not found' });
   }
-
+  
   const body = await c.req.parseBody();
   const remoteUser = typeof body['remoteUser'] === 'string' ? body['remoteUser'] : '';
-
+  
   if (!remoteUser || !remoteUser.includes('@')) {
     return c.json({ success: false, error: 'Invalid remote user format. Use username@domain' });
   }
-
+  
   const [username, domain] = remoteUser.split('@');
   if (!username || !domain) {
     return c.json({ success: false, error: 'Invalid remote user format. Use username@domain' });
   }
-
+  
   try {
     // First, try to discover the remote user via WebFinger
     const webfingerUrl = `https://${domain}/.well-known/webfinger?resource=acct:${username}@${domain}`;
     const webfingerResponse = await fetch(webfingerUrl);
+    
     if (!webfingerResponse.ok) {
       return c.json({ success: false, error: `Could not find user ${remoteUser} on ${domain}` });
     }
+    
     const webfinger = await webfingerResponse.json();
+    
     // Find the actor URL from WebFinger links
     const actorLink = webfinger.links?.find((link: any) => 
       link.rel === 'self' && link.type === 'application/activity+json'
     );
+    
     if (!actorLink?.href) {
       return c.json({ success: false, error: `Could not find actor URL for ${remoteUser}` });
     }
+    
     const actorUrl = actorLink.href;
+    
     // Get the actor profile to find their inbox
     const actorResponse = await fetch(actorUrl, {
       headers: {
         'Accept': 'application/activity+json'
       }
     });
+    
     if (!actorResponse.ok) {
       return c.json({ success: false, error: `Could not fetch profile for ${remoteUser}` });
     }
+    
     const actor = await actorResponse.json();
     const inboxUrl = actor.inbox;
+    
     if (!inboxUrl) {
       return c.json({ success: false, error: `Could not find inbox for ${remoteUser}` });
     }
-
-    // Use Fedify's Follow class and sendActivity helper
-    const { Follow } = await import('@fedify/fedify');
-    const currentDomain = getDomainFromRequest(c); // or your domain logic
-    const actorUri = `https://${currentDomain}/users/${currentUser.username}`;
-    const follow = new Follow({
-      actor: actorUri,
-      object: actorUrl,
-      to: [actorUrl],
-      cc: ['https://www.w3.org/ns/activitystreams#Public']
+    
+    // Create and send the Follow activity
+    const followActivity = {
+      "@context": "https://www.w3.org/ns/activitystreams",
+      "type": "Follow",
+      "actor": `https://${getDomainFromRequest(c)}/users/${currentUser.username}`,
+      "object": actorUrl,
+      "to": [actorUrl],
+      "cc": ["https://www.w3.org/ns/activitystreams#Public"]
+    };
+    
+    // Send the Follow activity to the remote user's inbox
+    const followResponse = await fetch(inboxUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/activity+json',
+        'Accept': 'application/activity+json'
+      },
+      body: JSON.stringify(followActivity)
     });
-
-    // Debug: log outgoing activity and target inbox
-    console.log('Sending Follow activity to:', inboxUrl);
-    console.log('Follow Activity:', JSON.stringify(follow, null, 2));
-
-    // Use Fedify's sendActivity to sign and send
-    const response = await c.sendActivity({ username: currentUser.username }, [inboxUrl], follow);
-    console.log('Remote server response:', response.status, await response.text());
-
-    if (response.ok) {
+    
+    if (followResponse.ok) {
       // Store the remote follow relationship in our database
       const follows = db.collection('follows');
       await follows.insertOne({
@@ -2930,6 +2959,7 @@ app.post('/remote-follow', async (c) => {
         remote: true,
         createdAt: new Date()
       });
+      
       return c.json({ 
         success: true, 
         message: `Successfully sent follow request to ${remoteUser}`,
@@ -2939,9 +2969,10 @@ app.post('/remote-follow', async (c) => {
     } else {
       return c.json({ 
         success: false, 
-        error: `Failed to send follow request to ${remoteUser}. Status: ${response.status}` 
+        error: `Failed to send follow request to ${remoteUser}. Status: ${followResponse.status}` 
       });
     }
+    
   } catch (error) {
     console.error('Error following remote user:', error);
     return c.json({ 
