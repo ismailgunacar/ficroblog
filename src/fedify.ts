@@ -208,6 +208,10 @@ export function createFederationInstance(mongoClient: any) {
       return [];
     }
     
+    // Clear existing keys to regenerate them with correct format
+    console.log(`🧹 Clearing existing keys for regeneration...`);
+    await keys.deleteMany({ user_id: user._id });
+    
     // Get existing keys or generate new ones
     let rsaKey = await keys.findOne({ user_id: user._id, type: 'RSASSA-PKCS1-v1_5' });
     let ed25519Key = await keys.findOne({ user_id: user._id, type: 'Ed25519' });
@@ -254,21 +258,25 @@ export function createFederationInstance(mongoClient: any) {
     
     // Return key pairs
     if (rsaKey) {
-      const privateKey = await importJwk(JSON.parse(rsaKey.private_key), {
-        name: 'RSASSA-PKCS1-v1_5',
-        hash: 'SHA-256',
-      });
-      const publicKey = await importJwk(JSON.parse(rsaKey.public_key), {
-        name: 'RSASSA-PKCS1-v1_5',
-        hash: 'SHA-256',
-      });
-      keyPairs.push({ privateKey, publicKey });
+      try {
+        const privateKey = await importJwk(JSON.parse(rsaKey.private_key), 'RSASSA-PKCS1-v1_5');
+        const publicKey = await importJwk(JSON.parse(rsaKey.public_key), 'RSASSA-PKCS1-v1_5');
+        keyPairs.push({ privateKey, publicKey });
+        console.log(`✅ Successfully imported RSA key pair`);
+      } catch (error) {
+        console.error(`❌ Failed to import RSA key pair:`, error);
+      }
     }
     
     if (ed25519Key) {
-      const privateKey = await importJwk(JSON.parse(ed25519Key.private_key), 'Ed25519');
-      const publicKey = await importJwk(JSON.parse(ed25519Key.public_key), 'Ed25519');
-      keyPairs.push({ privateKey, publicKey });
+      try {
+        const privateKey = await importJwk(JSON.parse(ed25519Key.private_key), 'Ed25519');
+        const publicKey = await importJwk(JSON.parse(ed25519Key.public_key), 'Ed25519');
+        keyPairs.push({ privateKey, publicKey });
+        console.log(`✅ Successfully imported Ed25519 key pair`);
+      } catch (error) {
+        console.error(`❌ Failed to import Ed25519 key pair:`, error);
+      }
     }
     
     console.log(`🔑 Returning ${keyPairs.length} key pairs for user: ${user.username}`);
