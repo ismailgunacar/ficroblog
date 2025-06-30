@@ -223,11 +223,21 @@ export function createFederationInstance(mongoClient: any) {
       console.log(`🔑 Generating RSA key for user: ${user.username}`);
       const { privateKey, publicKey } = await generateCryptoKeyPair('RSASSA-PKCS1-v1_5', {
         modulusLength: 2048,
-        publicExponent: new Uint8Array([0x01, 0x00, 0x01]),
+        publicExponent: new Uint8Array([1, 0, 1]),
         hash: 'SHA-256',
       });
       
+      // Store the actual CryptoKey objects, not JWK strings
       rsaKey = {
+        user_id: user._id,
+        type: 'RSASSA-PKCS1-v1_5',
+        privateKey,
+        publicKey,
+        created: new Date().toISOString(),
+      };
+      
+      // For database storage, we still need to serialize
+      const rsaKeyForStorage = {
         user_id: user._id,
         type: 'RSASSA-PKCS1-v1_5',
         private_key: JSON.stringify(await exportJwk(privateKey)),
@@ -235,7 +245,7 @@ export function createFederationInstance(mongoClient: any) {
         created: new Date().toISOString(),
       };
       
-      await keys.insertOne(rsaKey);
+      await keys.insertOne(rsaKeyForStorage);
       console.log(`✅ RSA key generated and stored for user: ${user.username}`);
     }
     
@@ -244,7 +254,17 @@ export function createFederationInstance(mongoClient: any) {
       console.log(`🔑 Generating Ed25519 key for user: ${user.username}`);
       const { privateKey, publicKey } = await generateCryptoKeyPair('Ed25519');
       
+      // Store the actual CryptoKey objects, not JWK strings
       ed25519Key = {
+        user_id: user._id,
+        type: 'Ed25519',
+        privateKey,
+        publicKey,
+        created: new Date().toISOString(),
+      };
+      
+      // For database storage, we still need to serialize
+      const ed25519KeyForStorage = {
         user_id: user._id,
         type: 'Ed25519',
         private_key: JSON.stringify(await exportJwk(privateKey)),
@@ -252,17 +272,24 @@ export function createFederationInstance(mongoClient: any) {
         created: new Date().toISOString(),
       };
       
-      await keys.insertOne(ed25519Key);
+      await keys.insertOne(ed25519KeyForStorage);
       console.log(`✅ Ed25519 key generated and stored for user: ${user.username}`);
     }
     
     // Return key pairs
     if (rsaKey) {
       try {
-        const privateKey = await importJwk(JSON.parse(rsaKey.private_key), 'RSASSA-PKCS1-v1_5');
-        const publicKey = await importJwk(JSON.parse(rsaKey.public_key), 'RSASSA-PKCS1-v1_5');
-        keyPairs.push({ privateKey, publicKey });
-        console.log(`✅ Successfully imported RSA key pair`);
+        // If we have the CryptoKey objects directly (just generated), use them
+        if (rsaKey.privateKey && rsaKey.publicKey) {
+          keyPairs.push({ privateKey: rsaKey.privateKey, publicKey: rsaKey.publicKey });
+          console.log(`✅ Using freshly generated RSA key pair`);
+        } else {
+          // Otherwise, import from stored JWK
+          const privateKey = await importJwk(JSON.parse(rsaKey.private_key), 'RSASSA-PKCS1-v1_5');
+          const publicKey = await importJwk(JSON.parse(rsaKey.public_key), 'RSASSA-PKCS1-v1_5');
+          keyPairs.push({ privateKey, publicKey });
+          console.log(`✅ Successfully imported RSA key pair from storage`);
+        }
       } catch (error) {
         console.error(`❌ Failed to import RSA key pair:`, error);
       }
@@ -270,10 +297,17 @@ export function createFederationInstance(mongoClient: any) {
     
     if (ed25519Key) {
       try {
-        const privateKey = await importJwk(JSON.parse(ed25519Key.private_key), 'Ed25519');
-        const publicKey = await importJwk(JSON.parse(ed25519Key.public_key), 'Ed25519');
-        keyPairs.push({ privateKey, publicKey });
-        console.log(`✅ Successfully imported Ed25519 key pair`);
+        // If we have the CryptoKey objects directly (just generated), use them
+        if (ed25519Key.privateKey && ed25519Key.publicKey) {
+          keyPairs.push({ privateKey: ed25519Key.privateKey, publicKey: ed25519Key.publicKey });
+          console.log(`✅ Using freshly generated Ed25519 key pair`);
+        } else {
+          // Otherwise, import from stored JWK
+          const privateKey = await importJwk(JSON.parse(ed25519Key.private_key), 'Ed25519');
+          const publicKey = await importJwk(JSON.parse(ed25519Key.public_key), 'Ed25519');
+          keyPairs.push({ privateKey, publicKey });
+          console.log(`✅ Successfully imported Ed25519 key pair from storage`);
+        }
       } catch (error) {
         console.error(`❌ Failed to import Ed25519 key pair:`, error);
       }
