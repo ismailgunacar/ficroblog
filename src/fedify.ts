@@ -203,7 +203,6 @@ export function createFederationInstance(mongoClient: MongoClient) {
 				inbox: ctx.getInboxUri(identifier),
 				outbox: ctx.getOutboxUri(identifier),
 				followers: ctx.getFollowersUri(identifier),
-				following: ctx.getFollowingUri(identifier),
 				url: new URL(`https://${domain}/users/${user.username}`),
 				icon: user.avatarUrl
 					? new Image({ url: new URL(user.avatarUrl) })
