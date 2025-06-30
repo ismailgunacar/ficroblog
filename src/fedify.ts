@@ -17,7 +17,6 @@ import { federation as fedifyHonoMiddleware } from "@fedify/fedify/x/hono";
 import type { Hono } from "hono";
 import { MongoClient, ObjectId } from "mongodb";
 import type { Post, User } from "./models";
-import { getDomainAndProtocolFromRequest } from "./utils/domain";
 
 // MongoDB-based KV store for Fedify
 class MongoDBKVStore {
@@ -113,7 +112,8 @@ export function createFederationInstance(mongoClient: MongoClient) {
 			const author = await users.findOne({ _id: post.userId });
 			if (!author) return null;
 
-			const { protocol, domain } = getDomainAndProtocolFromRequest(ctx);
+			const domain = ctx.hostname;
+			const protocol = "https";
 
 			return new Note({
 				id: new URL(`${protocol}://${domain}/posts/${post._id}`),
@@ -149,7 +149,8 @@ export function createFederationInstance(mongoClient: MongoClient) {
 				.limit(limit)
 				.toArray();
 
-			const { protocol, domain } = getDomainAndProtocolFromRequest(ctx);
+			const domain = ctx.hostname;
+			const protocol = "https";
 
 			const activities = userPosts.map(
 				(post) =>
@@ -187,7 +188,8 @@ export function createFederationInstance(mongoClient: MongoClient) {
 			const user = await users.findOne({ username: identifier });
 			if (!user) return null;
 
-			const { protocol, domain } = getDomainAndProtocolFromRequest(ctx);
+			const domain = ctx.hostname;
+			const protocol = "https";
 
 			// Get the actor's key pairs
 			const keys = await ctx.getActorKeyPairs(identifier);
