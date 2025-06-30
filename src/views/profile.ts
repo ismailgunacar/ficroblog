@@ -1,4 +1,4 @@
-import type { User } from '../models';
+import type { User } from '../models.js';
 
 export function renderUserProfile(user: User) {
   return `

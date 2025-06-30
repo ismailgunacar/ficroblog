@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { getUsersCollection, getFollowsCollection } from '../db';
+import { getUsersCollection, getFollowsCollection } from '../db.js';
 
 const activitypubRoutes = new Hono();
 

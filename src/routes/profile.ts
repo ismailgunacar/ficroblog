@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
-import { getUsersCollection } from '../db';
-import { renderUserProfile } from '../views/profile';
+import { getUsersCollection } from '../db.js';
+import { renderUserProfile } from '../views/profile.js';
 
 const profileRoutes = new Hono();
 

@@ -4,8 +4,15 @@ import app from "./app.tsx";
 import { connectToDatabase } from "./db.ts";
 import { initializeCounters, createIndexes } from "./utils.ts";
 import "./logging.ts";
-import profileRoutes from './routes/profile';
-import activitypubRoutes from './routes/activitypub';
+import profileRoutes from './routes/profile.js';
+import activitypubRoutes from './routes/activitypub.js';
+import homeRoutes from './routes/home.js';
+import remoteFollowRoutes from './routes/remoteFollow.js';
+import { renderHome } from './views/home.js';
+import { renderUserProfile } from './views/profile.js';
+import { renderPostPermalink } from './views/postPermalink.js';
+import { getDomainFromRequest } from './utils/domain.js';
+import { renderFederationDashboard } from './views/federationDashboard.js';
 
 // Initialize database connection and setup
 async function initializeApp() {
@@ -27,6 +34,8 @@ async function initializeApp() {
 // Mount profile routes
 app.route('/@', profileRoutes);
 app.route('/', activitypubRoutes);
+app.route('/', homeRoutes);
+app.route('/', remoteFollowRoutes);
 
 // Start the server
 initializeApp().then(() => {
