@@ -571,73 +571,40 @@ export function createFederationInstance(mongoClient: MongoClient) {
 			}
 		});
 
-	// Set up followers and following dispatchers (required by Fedify)
-	federation
-		.setFollowersDispatcher(
-			"/users/{identifier}/followers",
-			async (ctx, identifier) => {
-				const db = mongoClient.db();
-				const users = db.collection("users");
-				const follows = db.collection("follows");
-				const user = await users.findOne({ username: identifier });
-				if (!user) return [];
-				// Return array of follower actor URIs (local and remote)
-				const followers = await follows
-					.find({ followingId: user._id?.toString() })
-					.toArray();
-				return followers
-					.map((f) => {
-						// If followerId looks like an ObjectId, it's a local user
-						if (
-							typeof f.followerId === "string" &&
-							/^[a-fA-F0-9]{24}$/.test(f.followerId)
-						) {
-							// Find the local user by _id
-							return ctx.getActorUri(f.followerHandle || f.followerId);
-						} else if (
-							typeof f.followerId === "string" &&
-							f.followerId.startsWith("http")
-						) {
-							// Remote follower, return as-is
-							return f.followerId;
-						}
-						return null;
-					})
-					.filter(Boolean);
-			},
-		)
-		.setFollowingDispatcher(
-			"/users/{identifier}/following",
-			async (ctx, identifier) => {
-				const db = mongoClient.db();
-				const users = db.collection("users");
-				const follows = db.collection("follows");
-				const user = await users.findOne({ username: identifier });
-				if (!user) return [];
-				// Return array of following actor URIs (local and remote)
-				const following = await follows
-					.find({ followerId: user._id?.toString() })
-					.toArray();
-				return following
-					.map((f) => {
-						if (
-							typeof f.followingId === "string" &&
-							/^[a-fA-F0-9]{24}$/.test(f.followingId)
-						) {
-							// Local user
-							return ctx.getActorUri(f.followingId);
-						} else if (
-							typeof f.followingId === "string" &&
-							f.followingId.startsWith("http")
-						) {
-							// Remote following
-							return f.followingId;
-						}
-						return null;
-					})
-					.filter(Boolean);
-			},
-		);
+	// Set up followers dispatcher (required by Fedify)
+	federation.setFollowersDispatcher(
+		"/users/{identifier}/followers",
+		async (ctx, identifier) => {
+			const db = mongoClient.db();
+			const users = db.collection("users");
+			const follows = db.collection("follows");
+			const user = await users.findOne({ username: identifier });
+			if (!user) return [];
+			// Return array of follower actor URIs (local and remote)
+			const followers = await follows
+				.find({ followingId: user._id?.toString() })
+				.toArray();
+			return followers
+				.map((f) => {
+					// If followerId looks like an ObjectId, it's a local user
+					if (
+						typeof f.followerId === "string" &&
+						/^[a-fA-F0-9]{24}$/.test(f.followerId)
+					) {
+						// Find the local user by _id
+						return ctx.getActorUri(f.followerHandle || f.followerId);
+					} else if (
+						typeof f.followerId === "string" &&
+						f.followerId.startsWith("http")
+					) {
+						// Remote follower, return as-is
+						return f.followerId;
+					}
+					return null;
+				})
+				.filter(Boolean);
+		},
+	);
 
 	return federation;
 }
