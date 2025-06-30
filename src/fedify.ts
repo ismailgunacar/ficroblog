@@ -179,12 +179,16 @@ export function createFederationInstance(mongoClient: any) {
       });
     })
     .setKeyPairsDispatcher(async (ctx, identifier) => {
+    console.log(`🔑 Key pairs dispatcher called for identifier: ${identifier}`);
     const db = mongoClient.db('fongoblog2');
     const users = db.collection('users');
     const keys = db.collection('keys');
     
     const user = await users.findOne({ username: identifier });
-    if (!user) return [];
+    if (!user) {
+      console.log(`❌ User not found for identifier: ${identifier}`);
+      return [];
+    }
     
     // Get existing keys or generate new ones
     let rsaKey = await keys.findOne({ user_id: user._id, type: 'RSASSA-PKCS1-v1_5' });
@@ -194,6 +198,7 @@ export function createFederationInstance(mongoClient: any) {
     
     // Generate RSA key if it doesn't exist
     if (!rsaKey) {
+      console.log(`🔑 Generating RSA key for user: ${user.username}`);
       const { privateKey, publicKey } = await generateCryptoKeyPair('RSASSA-PKCS1-v1_5', {
         modulusLength: 2048,
         publicExponent: new Uint8Array([0x01, 0x00, 0x01]),
@@ -209,10 +214,12 @@ export function createFederationInstance(mongoClient: any) {
       };
       
       await keys.insertOne(rsaKey);
+      console.log(`✅ RSA key generated and stored for user: ${user.username}`);
     }
     
     // Generate Ed25519 key if it doesn't exist
     if (!ed25519Key) {
+      console.log(`🔑 Generating Ed25519 key for user: ${user.username}`);
       const { privateKey, publicKey } = await generateCryptoKeyPair('Ed25519');
       
       ed25519Key = {
@@ -224,6 +231,7 @@ export function createFederationInstance(mongoClient: any) {
       };
       
       await keys.insertOne(ed25519Key);
+      console.log(`✅ Ed25519 key generated and stored for user: ${user.username}`);
     }
     
     // Return key pairs
@@ -239,6 +247,7 @@ export function createFederationInstance(mongoClient: any) {
       keyPairs.push({ privateKey, publicKey });
     }
     
+    console.log(`🔑 Returning ${keyPairs.length} key pairs for user: ${user.username}`);
     return keyPairs;
   });
 

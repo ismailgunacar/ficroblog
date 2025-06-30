@@ -23,13 +23,18 @@ export function createRemoteFollowRoutes(client: MongoClient) {
     const remoteUser = typeof body['remoteUser'] === 'string' ? body['remoteUser'] : '';
     
     if (!remoteUser || !remoteUser.includes('@')) {
-      return c.json({ success: false, error: 'Invalid remote user format. Use username@domain' });
+      return c.json({ success: false, error: 'Invalid remote user format. Use @username@domain or username@domain' });
     }
     
-    const [username, domain] = remoteUser.split('@');
-    if (!username || !domain) {
-      return c.json({ success: false, error: 'Invalid remote user format. Use username@domain' });
+    // Handle both @username@domain and username@domain formats
+    const cleanRemoteUser = remoteUser.startsWith('@') ? remoteUser.slice(1) : remoteUser;
+    const parts = cleanRemoteUser.split('@');
+    
+    if (parts.length !== 2 || !parts[0] || !parts[1]) {
+      return c.json({ success: false, error: 'Invalid remote user format. Use @username@domain or username@domain' });
     }
+    
+    const [username, domain] = parts;
     
     try {
       // Get the federation instance
@@ -66,7 +71,14 @@ export function createRemoteFollowRoutes(client: MongoClient) {
         });
         
         // Send the Follow activity using Fedify's sendActivity method
-        await ctx.sendActivity({ username: currentUser.username }, remoteActor.id?.href, followActivity);
+        // The first parameter should be the actor's identifier, not an object
+        console.log(`Sending follow request from ${currentUser.username} to ${remoteUser}`);
+        console.log(`Remote actor ID: ${remoteActor.id?.href}`);
+        console.log(`Remote actor inbox: ${remoteActor.inbox?.href}`);
+        
+        await ctx.sendActivity({ username: currentUser.username }, remoteActor, followActivity);
+        
+        console.log(`Successfully sent follow request to ${remoteUser}`);
         
         // Store the remote follow relationship in our database
         await follows.insertOne({
@@ -96,6 +108,26 @@ export function createRemoteFollowRoutes(client: MongoClient) {
       
     } catch (error) {
       console.error('Error following remote user:', error);
+      
+      // Check if it's a network/HTTP error with status code
+      if (error instanceof Error) {
+        if (error.message.includes('401')) {
+          return c.json({ 
+            success: false, 
+            error: `❌ Failed to send follow request to ${remoteUser}. Status: 401 - Authentication failed. This may be due to HTTP signature issues.` 
+          });
+        }
+        
+        const statusMatch = error.message.match(/status[:\s]+(\d+)/i);
+        if (statusMatch) {
+          const status = statusMatch[1];
+          return c.json({ 
+            success: false, 
+            error: `❌ Failed to send follow request to ${remoteUser}. Status: ${status}` 
+          });
+        }
+      }
+      
       return c.json({ 
         success: false, 
         error: `Error following ${remoteUser}: ${error instanceof Error ? error.message : 'Unknown error'}` 

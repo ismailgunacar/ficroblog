@@ -125,7 +125,7 @@ function renderRemoteFollowCard(): string {
       <h3 style="margin-top: 0; margin-bottom: 0.5em; font-size: 1.1em;">🌐 Follow Remote User</h3>
       <p style="margin-bottom: 1em; color: var(--muted-color); font-size: 0.9em;">Follow someone from another ActivityPub server (e.g., username@mastodon.social)</p>
       <form method="post" action="/remote-follow" class="remote-follow-form" onsubmit="handleRemoteFollow(event)">
-        <input name="remoteUser" placeholder="username@domain" required class="input" style="width: 100%; font-size: 0.9em;" />
+        <input name="remoteUser" placeholder="@username@domain" required class="input" style="width: 100%; font-size: 0.9em;" />
         <small style="color: var(--muted-color); font-size: 0.8em;">Enter the full username including domain</small>
         <button type="submit" class="primary" style="padding: 0.5rem 1rem; font-size: 0.9em; white-space: nowrap;">Follow</button>
       </form>
