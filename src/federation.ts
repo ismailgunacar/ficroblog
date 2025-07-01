@@ -30,6 +30,7 @@ const keyCache = new Map<
 const federation = createFederation({
   kv: new MemoryKvStore(),
   queue: new InProcessMessageQueue(),
+  trustProxy: true,
 });
 
 federation
