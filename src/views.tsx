@@ -1181,9 +1181,13 @@ export const FollowerList: FC<FollowerListProps> = ({ followers }) => (
 
 export interface FollowingListProps {
   following: IFollow[];
+  isLoggedIn?: boolean;
 }
 
-export const FollowingList: FC<FollowingListProps> = ({ following }) => (
+export const FollowingList: FC<FollowingListProps> = ({
+  following,
+  isLoggedIn = false,
+}) => (
   <>
     <h2>Following</h2>
     <ul>
@@ -1195,27 +1199,29 @@ export const FollowingList: FC<FollowingListProps> = ({ following }) => (
           <a href={follow.following} class="secondary">
             {follow.following}
           </a>
-          <form
-            method="post"
-            action="/unfollow"
-            style={{ display: "inline", margin: 0 }}
-          >
-            <input type="hidden" name="following" value={follow.following} />
-            <button
-              type="submit"
-              class="secondary"
-              style={{
-                background: "none",
-                border: "none",
-                padding: 0,
-                cursor: "pointer",
-                textDecoration: "underline",
-                color: "#c00",
-              }}
+          {isLoggedIn && (
+            <form
+              method="post"
+              action="/unfollow"
+              style={{ display: "inline", margin: 0 }}
             >
-              Unfollow
-            </button>
-          </form>
+              <input type="hidden" name="following" value={follow.following} />
+              <button
+                type="submit"
+                class="secondary"
+                style={{
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                  color: "#c00",
+                }}
+              >
+                Unfollow
+              </button>
+            </form>
+          )}
         </li>
       ))}
     </ul>
