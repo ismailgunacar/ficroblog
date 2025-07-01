@@ -232,13 +232,27 @@ export const FollowingList: FC<FollowingListProps> = ({ following }) => (
           <a href={follow.following} class="secondary">
             {follow.following}
           </a>
-          <a
-            href={`/unfollow?following=${encodeURIComponent(follow.following)}`}
-            class="secondary"
-            style="margin-left: 1rem; font-size: 0.9em;"
+          <form
+            method="post"
+            action="/unfollow"
+            style={{ display: "inline", marginLeft: "1rem" }}
           >
-            Unfollow
-          </a>
+            <input type="hidden" name="following" value={follow.following} />
+            <button
+              type="submit"
+              class="secondary"
+              style={{
+                fontSize: "0.9em",
+                background: "none",
+                border: "none",
+                padding: "0",
+                cursor: "pointer",
+                textDecoration: "underline",
+              }}
+            >
+              Unfollow
+            </button>
+          </form>
         </li>
       ))}
     </ul>
