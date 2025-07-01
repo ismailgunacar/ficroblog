@@ -139,6 +139,8 @@ export interface HomeProps {
   handle: string;
   followers: number;
   following: number;
+  posts?: IPost[];
+  isProfilePage?: boolean;
 }
 
 export const Home: FC<HomeProps> = async ({
@@ -146,8 +148,11 @@ export const Home: FC<HomeProps> = async ({
   handle,
   followers,
   following,
+  posts,
+  isProfilePage,
 }) => {
-  const posts = await Post.find().sort({ createdAt: -1 }).exec();
+  // If posts are provided (profile page), use them; otherwise fetch all
+  const allPosts = posts ?? (await Post.find().sort({ createdAt: -1 }).exec());
   return (
     <>
       {/* Heading/Profile Card with bio and edit */}
@@ -293,123 +298,129 @@ export const Home: FC<HomeProps> = async ({
       </article>
 
       {/* Top Auth Card ... now includes Edit/Cancel/Save buttons */}
-      <article class="card">
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <span id="auth-status">{/* Auth status will be set by JS */}</span>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <button id="auth-btn" type="button">
-              Login
-            </button>
-            <input
-              id="auth-password"
-              type="password"
-              placeholder="Enter password"
-              style={{ width: "180px", display: "none" }}
-              autoComplete="current-password"
-            />
-            <button
-              id="profile-edit-btn"
-              type="button"
-              style={{ display: "none" }}
+      {!isProfilePage && (
+        <article class="card">
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <span id="auth-status">{/* Auth status will be set by JS */}</span>
+            <div
+              style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
             >
-              Edit
-            </button>
-            <button
-              id="profile-cancel-btn"
-              type="button"
-              style={{ display: "none" }}
-            >
-              Cancel
-            </button>
-            <button
-              id="profile-save-btn"
-              type="button"
-              style={{ display: "none" }}
-            >
-              Save
-            </button>
+              <button id="auth-btn" type="button">
+                Login
+              </button>
+              <input
+                id="auth-password"
+                type="password"
+                placeholder="Enter password"
+                style={{ width: "180px", display: "none" }}
+                autoComplete="current-password"
+              />
+              <button
+                id="profile-edit-btn"
+                type="button"
+                style={{ display: "none" }}
+              >
+                Edit
+              </button>
+              <button
+                id="profile-cancel-btn"
+                type="button"
+                style={{ display: "none" }}
+              >
+                Cancel
+              </button>
+              <button
+                id="profile-save-btn"
+                type="button"
+                style={{ display: "none" }}
+              >
+                Save
+              </button>
+            </div>
           </div>
-        </div>
-      </article>
+        </article>
+      )}
 
       {/* Follow Someone Card and New Post Card are now wrapped for auth-only visibility */}
-      <div id="auth-only" style={{ display: "none" }}>
-        {/* Follow Someone Card */}
-        <article class="card">
-          <FollowForm />
-        </article>
+      {!isProfilePage && (
+        <div id="auth-only" style={{ display: "none" }}>
+          {/* Follow Someone Card */}
+          <article class="card">
+            <FollowForm />
+          </article>
 
-        {/* New Post Card */}
-        <article class="card">
-          <form
-            id="post-form"
-            method="post"
-            action={`/users/${user.username}/posts`}
-          >
-            {/* Parent post preview (shown when replying) */}
-            <div
-              id="reply-parent"
-              style={{
-                display: "none",
-                marginBottom: "1em",
-                background: "#f8f8f8",
-                borderRadius: "0.5em",
-                padding: "0.75em",
-                border: "1px solid #eee",
-              }}
-            />
-            <input id="replyTo-input" type="hidden" name="replyTo" value="" />
-            <div id="thread-composer">
+          {/* New Post Card */}
+          <article class="card">
+            <form
+              id="post-form"
+              method="post"
+              action={`/users/${user.username}/posts`}
+            >
+              {/* Parent post preview (shown when replying) */}
               <div
-                class="thread-textarea"
+                id="reply-parent"
                 style={{
-                  display: "flex",
-                  alignItems: "flex-end",
-                  gap: "0.5em",
-                  marginBottom: "0.5em",
+                  display: "none",
+                  marginBottom: "1em",
+                  background: "#f8f8f8",
+                  borderRadius: "0.5em",
+                  padding: "0.75em",
+                  border: "1px solid #eee",
                 }}
-              >
-                <textarea
-                  name="content[]"
-                  required
-                  placeholder="What's up?"
-                  style={{ flex: 1 }}
-                />
-                <button
-                  type="button"
-                  id="add-thread-btn"
-                  title="Add another to thread"
+              />
+              <input id="replyTo-input" type="hidden" name="replyTo" value="" />
+              <div id="thread-composer">
+                <div
+                  class="thread-textarea"
                   style={{
-                    fontSize: "1.5em",
-                    padding: "0 0.5em",
-                    background: "none",
-                    border: "none",
-                    color: "#0ac",
-                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "flex-end",
+                    gap: "0.5em",
+                    marginBottom: "0.5em",
                   }}
                 >
-                  +
-                </button>
+                  <textarea
+                    name="content[]"
+                    required
+                    placeholder="What's up?"
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    id="add-thread-btn"
+                    title="Add another to thread"
+                    style={{
+                      fontSize: "1.5em",
+                      padding: "0 0.5em",
+                      background: "none",
+                      border: "none",
+                      color: "#0ac",
+                      cursor: "pointer",
+                    }}
+                  >
+                    +
+                  </button>
+                </div>
               </div>
-            </div>
-            <input
-              id="post-submit-btn"
-              type="submit"
-              value="Post"
-              style={{ marginTop: "1em" }}
-            />
-          </form>
-        </article>
-      </div>
+              <input
+                id="post-submit-btn"
+                type="submit"
+                value="Post"
+                style={{ marginTop: "1em" }}
+              />
+            </form>
+          </article>
+        </div>
+      )}
 
       {/* Timeline Section (posts already in cards) */}
-      {posts.map((post) => {
+      {allPosts.map((post) => {
         // Compute domain for handle
         let domain = "";
         if (typeof window !== "undefined" && window.location) {

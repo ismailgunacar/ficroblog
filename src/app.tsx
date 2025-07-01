@@ -41,14 +41,20 @@ app.get("/@*", async (c) => {
   const url = new URL(c.req.url);
   const handle = `@${username}@${url.host}`;
 
+  // Fetch this user's posts
+  const posts = await Post.find({ author: username })
+    .sort({ createdAt: -1 })
+    .exec();
+
   return c.html(
     <Layout>
-      <Profile
-        name={user.displayName}
-        username={user.username}
+      <Home
+        user={user}
         handle={handle}
         followers={followers}
         following={followingCount}
+        posts={posts}
+        isProfilePage={true}
       />
     </Layout>,
   );
@@ -347,14 +353,20 @@ app.get("/users/:username", async (c) => {
   const url = new URL(c.req.url);
   const handle = `@${username}@${url.host}`;
 
+  // Fetch this user's posts
+  const posts = await Post.find({ author: username })
+    .sort({ createdAt: -1 })
+    .exec();
+
   return c.html(
     <Layout>
-      <Profile
-        name={user.displayName}
-        username={user.username}
+      <Home
+        user={user}
         handle={handle}
         followers={followers}
         following={followingCount}
+        posts={posts}
+        isProfilePage={true}
       />
     </Layout>,
   );
