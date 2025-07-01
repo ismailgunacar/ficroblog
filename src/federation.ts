@@ -47,14 +47,14 @@ federation
     logger.info(`Loaded ${keys.length} keys for ${identifier}`);
 
     const actor = new Person({
-      id: ctx.getActorUri(identifier),
+      id: new URL(`${PUBLIC_URL}/users/${identifier}`),
       preferredUsername: identifier,
       name: identifier,
-      followers: ctx.getFollowersUri(identifier),
-      following: ctx.getFollowingUri(identifier),
-      inbox: ctx.getInboxUri(identifier),
+      followers: new URL(`${PUBLIC_URL}/users/${identifier}/followers`),
+      following: new URL(`${PUBLIC_URL}/users/${identifier}/following`),
+      inbox: new URL(`${PUBLIC_URL}/users/${identifier}/inbox`),
       endpoints: new Endpoints({
-        sharedInbox: ctx.getInboxUri(),
+        sharedInbox: new URL(`${PUBLIC_URL}/inbox`),
       }),
       publicKey: keys[0]?.cryptographicKey,
       assertionMethods: keys.map((k) => k.multikey),
