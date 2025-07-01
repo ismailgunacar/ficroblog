@@ -294,8 +294,20 @@ app.get("/users/:username/posts/:id", async (c) => {
   const user = await User.findOne({ username }).exec();
   if (!user) return c.notFound();
 
-  const post = await Post.findOne({ _id: postId, author: username }).exec();
-  if (!post) return c.notFound();
+  // Validate ObjectId format
+  if (!postId || typeof postId !== "string" || postId.length !== 24) {
+    logger.warn(`Invalid ObjectId format in post detail page: ${postId}`);
+    return c.notFound();
+  }
+
+  let post;
+  try {
+    post = await Post.findOne({ _id: postId, author: username }).exec();
+    if (!post) return c.notFound();
+  } catch (error) {
+    logger.error(`Error fetching post ${postId}: ${error}`);
+    return c.notFound();
+  }
 
   const following = `https://${c.req.header("host")}/users/${username}`;
   const followers = await FollowModel.countDocuments({ following });

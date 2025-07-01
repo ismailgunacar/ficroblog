@@ -289,21 +289,41 @@ federation.setObjectDispatcher(
   Note,
   "/users/{identifier}/posts/{id}",
   async (ctx, values) => {
-    const post = await Post.findOne({
-      _id: values.id,
-      author: values.identifier,
-    }).exec();
+    try {
+      // Validate that the ID is a valid ObjectId format
+      if (
+        !values.id ||
+        typeof values.id !== "string" ||
+        values.id.length !== 24
+      ) {
+        logger.warn(`Invalid ObjectId format: ${values.id}`);
+        return null;
+      }
 
-    if (!post) return null;
+      const post = await Post.findOne({
+        _id: values.id,
+        author: values.identifier,
+      }).exec();
 
-    return new Note({
-      id: ctx.getObjectUri(Note, values),
-      attribution: ctx.getActorUri(values.identifier),
-      to: PUBLIC_COLLECTION,
-      content: post.content,
-      mediaType: "text/html",
-      url: ctx.getObjectUri(Note, values),
-    });
+      if (!post) {
+        logger.info(
+          `Post not found: ${values.id} for user ${values.identifier}`,
+        );
+        return null;
+      }
+
+      return new Note({
+        id: ctx.getObjectUri(Note, values),
+        attribution: ctx.getActorUri(values.identifier),
+        to: PUBLIC_COLLECTION,
+        content: post.content,
+        mediaType: "text/html",
+        url: ctx.getObjectUri(Note, values),
+      });
+    } catch (error) {
+      logger.error(`Error fetching post ${values.id}: ${error}`);
+      return null;
+    }
   },
 );
 
