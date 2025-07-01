@@ -1188,14 +1188,17 @@ export const FollowingList: FC<FollowingListProps> = ({ following }) => (
     <h2>Following</h2>
     <ul>
       {following.map((follow) => (
-        <li key={follow.following}>
+        <li
+          key={follow.following}
+          style={{ display: "flex", alignItems: "center", gap: "0.5em" }}
+        >
           <a href={follow.following} class="secondary">
             {follow.following}
           </a>
           <form
             method="post"
             action="/unfollow"
-            style={{ display: "inline", marginLeft: "1rem" }}
+            style={{ display: "inline", margin: 0 }}
           >
             <input type="hidden" name="following" value={follow.following} />
             <button
@@ -1205,9 +1208,10 @@ export const FollowingList: FC<FollowingListProps> = ({ following }) => (
                 fontSize: "0.9em",
                 background: "none",
                 border: "none",
-                padding: "0",
+                padding: 0,
                 cursor: "pointer",
                 textDecoration: "underline",
+                color: "#c00",
               }}
             >
               Unfollow
