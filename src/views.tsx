@@ -2,7 +2,7 @@ import type { FC } from "hono/jsx";
 import type { IFollow, IPost, IUser } from "./models.ts";
 import { Post } from "./models.ts";
 
-export const Layout: FC = (props) => (
+export const Layout: FC<{ isAuthed?: boolean }> = (props) => (
   <html lang="en" data-theme="light">
     <head>
       <meta charset="utf-8" />
@@ -35,6 +35,11 @@ export const Layout: FC = (props) => (
           }
         }
       `}</style>
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `window.isAuthed = ${props.isAuthed ? "true" : "false"};`,
+        }}
+      />
     </head>
     <body>
       <main class="container">{props.children}</main>
@@ -1195,27 +1200,29 @@ export const FollowingList: FC<FollowingListProps> = ({ following }) => (
           <a href={follow.following} class="secondary">
             {follow.following}
           </a>
-          <form
-            method="post"
-            action="/unfollow"
-            style={{ display: "inline", margin: 0 }}
-          >
-            <input type="hidden" name="following" value={follow.following} />
-            <button
-              type="submit"
-              class="secondary"
-              style={{
-                background: "none",
-                border: "none",
-                padding: 0,
-                cursor: "pointer",
-                textDecoration: "underline",
-                color: "#c00",
-              }}
+          {typeof window !== "undefined" && (window as any).isAuthed ? (
+            <form
+              method="post"
+              action="/unfollow"
+              style={{ display: "inline", margin: 0 }}
             >
-              Unfollow
-            </button>
-          </form>
+              <input type="hidden" name="following" value={follow.following} />
+              <button
+                type="submit"
+                class="secondary"
+                style={{
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                  color: "#c00",
+                }}
+              >
+                Unfollow
+              </button>
+            </form>
+          ) : null}
         </li>
       ))}
     </ul>
