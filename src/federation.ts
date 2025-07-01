@@ -244,15 +244,27 @@ federation
     "/users/{identifier}/followers",
     async (ctx, identifier, cursor) => {
       const following = ctx.getActorUri(identifier).href;
+      logger.info(
+        `Followers dispatcher called for ${identifier}, following: ${following}`,
+      );
+
       const docs = await Follow.find({ following })
         .sort({ createdAt: -1 })
         .exec();
+
+      logger.info(`Found ${docs.length} followers for ${identifier}`);
+
       const items: Recipient[] = docs.map(
-        (f: import("./models.js").IFollow) => ({
-          id: new URL(f.follower),
-          inboxId: null, // Optionally resolve inbox if you store it
-        }),
+        (f: import("./models.js").IFollow) => {
+          logger.info(`Adding follower: ${f.follower}`);
+          return {
+            id: new URL(f.follower),
+            inboxId: null, // Optionally resolve inbox if you store it
+          };
+        },
       );
+
+      logger.info(`Returning ${items.length} followers for ${identifier}`);
       return { items };
     },
   )

@@ -259,6 +259,18 @@ app.post("/users/:username/posts", async (c) => {
   logger.info(`Note ID: ${note.id?.href}`);
   logger.info(`Actor: ${publicUrl}/users/${username}`);
 
+  // Check if we have any followers first
+  const followers = await FollowModel.find({
+    following: `${publicUrl}/users/${username}`,
+  }).exec();
+  logger.info(`Found ${followers.length} followers for ${username}`);
+
+  if (followers.length === 0) {
+    logger.info(`No followers found, skipping delivery`);
+  } else {
+    logger.info(`Followers: ${followers.map((f) => f.follower).join(", ")}`);
+  }
+
   await ctx.sendActivity(
     { identifier: username },
     "followers",
