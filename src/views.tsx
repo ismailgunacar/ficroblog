@@ -513,9 +513,8 @@ export const Home: FC<HomeProps> = async ({
               >
                 <div>
                   <span style={{ fontWeight: 600 }}>{displayName}</span>
-                  <span
-                    style={{ color: "#888", marginLeft: 8, fontSize: "0.95em" }}
-                  >
+                  <br />
+                  <span style={{ color: "#888", fontSize: "0.95em" }}>
                     {handle}
                   </span>
                 </div>
@@ -967,7 +966,8 @@ export const PostView: FC<
             <span style={{ fontWeight: 600 }}>
               {user?.displayName || post.author}
             </span>
-            <span style={{ color: "#888", marginLeft: 8, fontSize: "0.95em" }}>
+            <br />
+            <span style={{ color: "#888", fontSize: "0.95em" }}>
               @{user?.username || post.author}
               {domain ? `@${domain}` : ""}
             </span>
