@@ -32,6 +32,7 @@ const PUBLIC_URL = process.env.PUBLIC_URL || "https://localhost:8000";
 const federation = createFederation({
   kv: new MemoryKvStore(),
   queue: new InProcessMessageQueue(),
+  baseUrl: new URL(PUBLIC_URL),
 });
 
 federation
