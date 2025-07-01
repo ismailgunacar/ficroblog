@@ -27,17 +27,9 @@ const keyCache = new Map<
   Array<{ privateKey: CryptoKey; publicKey: CryptoKey }>
 >();
 
-const PUBLIC_URL = process.env.PUBLIC_URL;
-if (!PUBLIC_URL) {
-  throw new Error(
-    "PUBLIC_URL environment variable must be set to your production domain (e.g., https://gunac.ar)",
-  );
-}
-
 const federation = createFederation({
   kv: new MemoryKvStore(),
   queue: new InProcessMessageQueue(),
-  baseUrl: new URL(PUBLIC_URL),
 });
 
 federation
@@ -47,14 +39,14 @@ federation
     logger.info(`Loaded ${keys.length} keys for ${identifier}`);
 
     const actor = new Person({
-      id: new URL(`${PUBLIC_URL}/users/${identifier}`),
+      id: ctx.getActorUri(identifier),
       preferredUsername: identifier,
       name: identifier,
-      followers: new URL(`${PUBLIC_URL}/users/${identifier}/followers`),
-      following: new URL(`${PUBLIC_URL}/users/${identifier}/following`),
-      inbox: new URL(`${PUBLIC_URL}/users/${identifier}/inbox`),
+      followers: ctx.getFollowersUri(identifier),
+      following: ctx.getFollowingUri(identifier),
+      inbox: ctx.getInboxUri(identifier),
       endpoints: new Endpoints({
-        sharedInbox: new URL(`${PUBLIC_URL}/inbox`),
+        sharedInbox: ctx.getInboxUri(),
       }),
       publicKey: keys[0]?.cryptographicKey,
       assertionMethods: keys.map((k) => k.multikey),
@@ -94,8 +86,8 @@ federation
     const parsed = ctx.parseUri(follow.objectId);
     if (!parsed || parsed.type !== "actor") return;
     // Only allow follows to our user (single user)
-    // Use public URL for consistent storage
-    const following = `${PUBLIC_URL}/users/ismail`;
+    // Use context to get the correct URL
+    const following = ctx.getActorUri(parsed.identifier).href;
     const follower = follow.actorId.href;
 
     logger.info(`Received follow request from ${follower} to ${following}`);
@@ -140,7 +132,7 @@ federation
     if (!undo.actorId || !object.objectId) return;
     const parsed = ctx.parseUri(object.objectId);
     if (!parsed || parsed.type !== "actor") return;
-    const following = `${PUBLIC_URL}/users/ismail`;
+    const following = ctx.getActorUri(parsed.identifier).href;
     const follower = undo.actorId.href;
 
     logger.info(`Received unfollow request from ${follower} to ${following}`);
@@ -204,7 +196,7 @@ federation
   .setFollowersDispatcher(
     "/users/{identifier}/followers",
     async (ctx, identifier, cursor) => {
-      const following = `${PUBLIC_URL}/users/ismail`;
+      const following = ctx.getActorUri(identifier).href;
       const docs = await Follow.find({ following })
         .sort({ createdAt: -1 })
         .exec();
@@ -218,7 +210,7 @@ federation
     },
   )
   .setCounter(async (ctx, identifier) => {
-    const following = `${PUBLIC_URL}/users/ismail`;
+    const following = ctx.getActorUri(identifier).href;
     return await Follow.countDocuments({ following });
   });
 
