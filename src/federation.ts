@@ -209,10 +209,22 @@ federation
 
     if (author && content) {
       try {
+        // Convert Temporal.Instant to JavaScript Date for MongoDB
+        let publishedDate = new Date();
+        if (object.published) {
+          if (typeof object.published === "string") {
+            publishedDate = new Date(object.published);
+          } else if (object.published.epochMilliseconds) {
+            publishedDate = new Date(object.published.epochMilliseconds);
+          } else {
+            publishedDate = new Date(object.published.toString());
+          }
+        }
+
         const post = await Post.create({
           content,
           author,
-          createdAt: new Date(object.published || Date.now()),
+          createdAt: publishedDate,
           remote: true,
           objectId: object.id?.href,
         });
