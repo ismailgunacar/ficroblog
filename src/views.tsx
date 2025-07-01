@@ -773,6 +773,8 @@ export const Home: FC<HomeProps> = async ({
   var threadComposer = document.getElementById('thread-composer');
   var addThreadBtn = document.getElementById('add-thread-btn');
   var postSubmitBtn = document.getElementById('post-submit-btn');
+  var postForm = document.getElementById('post-form');
+  var postError = document.getElementById('post-error');
   if (threadComposer && addThreadBtn && postSubmitBtn) {
     addThreadBtn.addEventListener('click', function() {
       var newDiv = document.createElement('div');
@@ -805,6 +807,61 @@ export const Home: FC<HomeProps> = async ({
       // Move the Post button to the bottom
       threadComposer.parentNode.appendChild(postSubmitBtn);
       textarea.focus();
+    });
+  }
+  // Post form submit: make button reactive
+  if (postForm && postSubmitBtn) {
+    postForm.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      if (postError) postError.textContent = '';
+      postSubmitBtn.disabled = true;
+      postSubmitBtn.value = 'Posting...';
+      // Gather all textarea values
+      var textareas = postForm.querySelectorAll('textarea[name="content[]"]');
+      var contents = Array.from(textareas).map(t => t.value.trim()).filter(Boolean);
+      if (!contents.length) {
+        if (postError) postError.textContent = 'Content is required.';
+        postSubmitBtn.disabled = false;
+        postSubmitBtn.value = 'Post';
+        return;
+      }
+      var replyTo = postForm.querySelector('#replyTo-input')?.value || '';
+      var formData = {
+        'content[]': contents,
+        replyTo: replyTo
+      };
+      try {
+        // Use FormData to submit as multipart/form-data
+        const fd = new FormData(postForm);
+        const res = await fetch(postForm.action, {
+          method: 'POST',
+          body: fd
+        });
+        if (res.ok) {
+          // Success: clear textareas, reset button, hide reply parent
+          textareas.forEach(t => t.value = '');
+          if (postError) postError.textContent = '';
+          postSubmitBtn.disabled = false;
+          postSubmitBtn.value = 'Post';
+          var replyParent = document.getElementById('reply-parent');
+          if (replyParent) {
+            replyParent.style.display = 'none';
+            replyParent.innerHTML = '';
+          }
+          postForm.querySelector('#replyTo-input').value = '';
+          // Optionally, reload page to show new post
+          window.location.reload();
+        } else {
+          const errText = await res.text();
+          if (postError) postError.textContent = errText || 'Failed to post.';
+          postSubmitBtn.disabled = false;
+          postSubmitBtn.value = 'Post';
+        }
+      } catch (err) {
+        if (postError) postError.textContent = 'Failed to post.';
+        postSubmitBtn.disabled = false;
+        postSubmitBtn.value = 'Post';
+      }
     });
   }
 
