@@ -585,7 +585,7 @@ app.post("/like", async (c) => {
         { id: new URL(post.author), inboxId: new URL(inbox) },
         new Like({
           id: new URL(`#like-${Date.now()}`, actorUrl),
-          actor: actorUrl,
+          actor: new URL(actorUrl),
           object: targetObject,
         }),
       );
@@ -599,7 +599,7 @@ app.post("/like", async (c) => {
       "followers",
       new Like({
         id: new URL(`#like-${Date.now()}`, actorUrl),
-        actor: actorUrl,
+        actor: new URL(actorUrl),
         object: targetObject,
       }),
     );
@@ -638,7 +638,7 @@ app.post("/repost", async (c) => {
         { id: new URL(post.author), inboxId: new URL(inbox) },
         new Announce({
           id: new URL(`#announce-${Date.now()}`, actorUrl),
-          actor: actorUrl,
+          actor: new URL(actorUrl),
           object: targetObject,
         }),
       );
@@ -652,7 +652,7 @@ app.post("/repost", async (c) => {
       "followers",
       new Announce({
         id: new URL(`#announce-${Date.now()}`, actorUrl),
-        actor: actorUrl,
+        actor: new URL(actorUrl),
         object: targetObject,
       }),
     );
