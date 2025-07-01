@@ -94,18 +94,18 @@ export const Profile: FC<ProfileProps> = ({
 }) => (
   <>
     <h1>
-      <a href="/">{name}</a>
+      <a href={`/`}>{name}</a>
     </h1>
     <p>
       <a href={`/@${username}`} style={{ userSelect: "all" }}>
         {handle}
       </a>{" "}
       &middot;{" "}
-      <a href={`/@${username}/followers`}>
+      <a href={`/users/${username}/followers`}>
         {followers === 1 ? "1 follower" : `${followers} followers`}
       </a>{" "}
       &middot;{" "}
-      <a href={`/@${username}/following`}>
+      <a href={`/users/${username}/following`}>
         {following === 1 ? "1 following" : `${following} following`}
       </a>
     </p>
@@ -178,11 +178,11 @@ export const Home: FC<HomeProps> = async ({
                   {handle}
                 </a>{" "}
                 &middot;{" "}
-                <a href={`/@${user.username}/followers`}>
+                <a href={`/users/${user.username}/followers`}>
                   {followers === 1 ? "1 follower" : `${followers} followers`}
                 </a>{" "}
                 &middot;{" "}
-                <a href={`/@${user.username}/following`}>
+                <a href={`/users/${user.username}/following`}>
                   {following === 1 ? "1 following" : `${following} following`}
                 </a>
               </p>
@@ -269,7 +269,8 @@ export const Home: FC<HomeProps> = async ({
           </label>
         </form>
       </article>
-      {/* Top Auth Card ... now includes Edit/Cancel/Save buttons, now moved below profile card */}
+
+      {/* Top Auth Card ... now includes Edit/Cancel/Save buttons */}
       <article class="card" style={{ padding: "1rem", marginBottom: "1.5rem" }}>
         <div
           style={{
@@ -314,6 +315,7 @@ export const Home: FC<HomeProps> = async ({
           </div>
         </div>
       </article>
+
       {/* Follow Someone Card and New Post Card are now wrapped for auth-only visibility */}
       <div id="auth-only" style={{ display: "none" }}>
         {/* Follow Someone Card */}
@@ -329,7 +331,7 @@ export const Home: FC<HomeProps> = async ({
           class="card"
           style={{ padding: "1rem", marginBottom: "1.5rem" }}
         >
-          <form method="post" action={`/@${user.username}/posts`}>
+          <form method="post" action={`/users/${user.username}/posts`}>
             <fieldset>
               <label>
                 <textarea name="content" required placeholder="What's up?" />
@@ -339,6 +341,7 @@ export const Home: FC<HomeProps> = async ({
           </form>
         </article>
       </div>
+
       {/* Timeline Section (posts already in cards) */}
       {posts.map((post) => (
         <article
@@ -372,7 +375,7 @@ export const Home: FC<HomeProps> = async ({
                 {" "}
                 &middot;{" "}
                 <a
-                  href={`/@${post.author}/posts/${post._id}`}
+                  href={`/users/${post.author}/posts/${post._id}`}
                   class="secondary"
                 >
                   permalink
@@ -382,6 +385,7 @@ export const Home: FC<HomeProps> = async ({
           </div>
         </article>
       ))}
+
       {/* Seamless login/logout JS */}
       {/* biome-ignore lint/security/noDangerouslySetInnerHtml: Inline script for login/logout and profile edit UI */}
       <script
