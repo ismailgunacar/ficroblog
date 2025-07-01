@@ -141,6 +141,7 @@ export interface HomeProps {
   following: number;
   posts?: IPost[];
   isProfilePage?: boolean;
+  domain?: string;
 }
 
 export const Home: FC<HomeProps> = async ({
@@ -150,9 +151,11 @@ export const Home: FC<HomeProps> = async ({
   following,
   posts,
   isProfilePage,
+  domain,
 }) => {
   // If posts are provided (profile page), use them; otherwise fetch all
   const allPosts = posts ?? (await Post.find().sort({ createdAt: -1 }).exec());
+  const postDomain = domain || "localhost";
   return (
     <>
       {/* Heading/Profile Card with bio and edit */}
@@ -421,13 +424,6 @@ export const Home: FC<HomeProps> = async ({
 
       {/* Timeline Section (posts already in cards) */}
       {allPosts.map((post) => {
-        // Compute domain for handle
-        let domain = "";
-        if (typeof window !== "undefined" && window.location) {
-          domain = window.location.host;
-        } else {
-          domain = "localhost";
-        }
         return (
           <article
             key={post._id}
@@ -469,7 +465,7 @@ export const Home: FC<HomeProps> = async ({
                   <span
                     style={{ color: "#888", marginLeft: 8, fontSize: "0.95em" }}
                   >
-                    @{user.username}@{domain}
+                    @{user.username}@{postDomain}
                   </span>
                 </div>
                 <time
@@ -532,7 +528,7 @@ export const Home: FC<HomeProps> = async ({
                   data-post-id={post._id}
                   data-post-content={post.content}
                   data-post-author={user.displayName}
-                  data-post-handle={`@${user.username}@${domain}`}
+                  data-post-handle={`@${user.username}@${postDomain}`}
                   style={{
                     background: "none",
                     border: "none",

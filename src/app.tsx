@@ -40,6 +40,7 @@ app.get("/@*", async (c) => {
 
   const url = new URL(c.req.url);
   const handle = `@${username}@${url.host}`;
+  const domain = c.req.header("host") || "localhost";
 
   // Fetch this user's posts
   const posts = await Post.find({ author: username })
@@ -55,6 +56,7 @@ app.get("/@*", async (c) => {
         following={followingCount}
         posts={posts}
         isProfilePage={true}
+        domain={domain}
       />
     </Layout>,
   );
