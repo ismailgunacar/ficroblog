@@ -281,10 +281,10 @@ federation
     // Respond with 202 Accepted
     return ctx.res?.status(202);
   })
+  // Like handler (handles both string and class)
   .on("Like", async (ctx, activity) => {
-    // Handle plain-object Like activities
-    const objectId = activity.object;
-    const actor = activity.actor;
+    const objectId = activity.object?.href || activity.object;
+    const actor = activity.actorId?.href || activity.actor;
     if (!objectId || !actor) return;
     const post = await Post.findOne({ objectId }).exec();
     if (!post) return;
@@ -294,10 +294,10 @@ federation
       await post.save();
     }
   })
+  // Announce handler (handles both string and class)
   .on("Announce", async (ctx, activity) => {
-    // Handle plain-object Announce (repost) activities
-    const objectId = activity.object;
-    const actor = activity.actor;
+    const objectId = activity.object?.href || activity.object;
+    const actor = activity.actorId?.href || activity.actor;
     if (!objectId || !actor) return;
     const post = await Post.findOne({ objectId }).exec();
     if (!post) return;
@@ -307,12 +307,12 @@ federation
       await post.save();
     }
   })
+  // Undo handler (handles both string and class)
   .on("Undo", async (ctx, activity) => {
-    // Handle plain-object Undo for Like or Announce
-    const obj = activity.object;
+    const obj = activity.object || (await activity.getObject?.());
     if (!obj) return;
-    const objectId = obj.object;
-    const actor = obj.actor;
+    const objectId = obj.object?.href || obj.object;
+    const actor = obj.actorId?.href || obj.actor;
     if (!objectId || !actor) return;
     const post = await Post.findOne({ objectId }).exec();
     if (!post) return;
@@ -323,6 +323,10 @@ federation
       post.reposts = post.reposts.filter((a) => a !== actor);
       await post.save();
     }
+  })
+  // Catch-all handler for debugging
+  .on("*", async (ctx, activity) => {
+    console.error("Unhandled activity type:", activity.type, activity);
   });
 
 // Expose followers collection for ActivityPub
