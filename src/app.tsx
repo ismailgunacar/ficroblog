@@ -540,6 +540,20 @@ app.get("/users/:username/following", async (c) => {
   );
 });
 
+// Helper to fetch remote actor's inbox from their actor object
+async function fetchRemoteInbox(actorUrl: string): Promise<string | null> {
+  try {
+    const res = await fetch(actorUrl, {
+      headers: { Accept: "application/activity+json" },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return typeof data.inbox === "string" ? data.inbox : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 // Like a post
 app.post("/like", async (c) => {
   const user = await User.findOne().exec();
@@ -562,21 +576,25 @@ app.post("/like", async (c) => {
   const targetObject = objectId
     ? new URL(objectId)
     : new URL(`/users/${user.username}/posts/${post._id}`, publicUrl);
-  // If remote, send to remote author; if local, send to followers
-  if (post.remote && post.author) {
-    // Remote post: send Like to remote author
-    await ctx.sendActivity(
-      { identifier: user.username },
-      { id: new URL(post.author), inboxId: new URL(`${post.author}/inbox`) },
-      {
-        "@context": "https://www.w3.org/ns/activitystreams",
-        type: "Like",
-        id: new URL(`#like-${Date.now()}`, actorUrl),
-        actor: actorUrl,
-        object: targetObject,
-      },
-    );
-  } else {
+  if (post.remote && post.author && post.author.startsWith("http")) {
+    // Remote post: fetch actor inbox
+    const inbox = await fetchRemoteInbox(post.author);
+    if (inbox) {
+      await ctx.sendActivity(
+        { identifier: user.username },
+        { id: new URL(post.author), inboxId: new URL(inbox) },
+        {
+          "@context": "https://www.w3.org/ns/activitystreams",
+          type: "Like",
+          id: new URL(`#like-${Date.now()}`, actorUrl),
+          actor: actorUrl,
+          object: targetObject,
+        },
+      );
+    } else {
+      logger.error(`Could not fetch inbox for remote actor: ${post.author}`);
+    }
+  } else if (!post.remote) {
     // Local post: federate Like to followers
     await ctx.sendActivity({ identifier: user.username }, "followers", {
       "@context": "https://www.w3.org/ns/activitystreams",
@@ -611,20 +629,25 @@ app.post("/repost", async (c) => {
   const targetObject = objectId
     ? new URL(objectId)
     : new URL(`/users/${user.username}/posts/${post._id}`, publicUrl);
-  if (post.remote && post.author) {
-    // Remote post: send Announce to remote author
-    await ctx.sendActivity(
-      { identifier: user.username },
-      { id: new URL(post.author), inboxId: new URL(`${post.author}/inbox`) },
-      {
-        "@context": "https://www.w3.org/ns/activitystreams",
-        type: "Announce",
-        id: new URL(`#announce-${Date.now()}`, actorUrl),
-        actor: actorUrl,
-        object: targetObject,
-      },
-    );
-  } else {
+  if (post.remote && post.author && post.author.startsWith("http")) {
+    // Remote post: fetch actor inbox
+    const inbox = await fetchRemoteInbox(post.author);
+    if (inbox) {
+      await ctx.sendActivity(
+        { identifier: user.username },
+        { id: new URL(post.author), inboxId: new URL(inbox) },
+        {
+          "@context": "https://www.w3.org/ns/activitystreams",
+          type: "Announce",
+          id: new URL(`#announce-${Date.now()}`, actorUrl),
+          actor: actorUrl,
+          object: targetObject,
+        },
+      );
+    } else {
+      logger.error(`Could not fetch inbox for remote actor: ${post.author}`);
+    }
+  } else if (!post.remote) {
     // Local post: federate Announce to followers
     await ctx.sendActivity({ identifier: user.username }, "followers", {
       "@context": "https://www.w3.org/ns/activitystreams",
