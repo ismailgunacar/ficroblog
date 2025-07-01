@@ -3,16 +3,32 @@ import type { IFollow, IPost, IUser } from "./models.ts";
 import { Post } from "./models.ts";
 
 export const Layout: FC = (props) => (
-  <html lang="en">
+  <html lang="en" data-theme="light">
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <meta name="color-scheme" content="light dark" />
+      <meta name="color-scheme" content="light" />
       <title>Fongoblog - "Wendy"</title>
       <link
         rel="stylesheet"
         href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"
       />
+      <style>{`
+        .container {
+          max-width: 1200px;
+          margin: 0 auto;
+          padding: 1rem;
+        }
+        .card {
+          padding: 1.5rem;
+          margin: 2rem 0;
+        }
+        @media (max-width: 600px) {
+          .container {
+            padding: 0.5rem;
+          }
+        }
+      `}</style>
     </head>
     <body>
       <main class="container">{props.children}</main>
@@ -129,12 +145,12 @@ export const Home: FC<HomeProps> = async ({
   return (
     <>
       {/* Heading/Profile Card with bio and edit */}
-      <article class="card" style={{ padding: "1rem", marginBottom: "1.5rem" }}>
+      <article class="card">
         <div id="profile-view">
           {user.headerUrl && (
             <div
               style={{
-                margin: "-1rem -1rem 1rem -1rem",
+                margin: "-1.5rem -1.5rem 1rem -1.5rem",
               }}
             >
               <img
@@ -142,7 +158,7 @@ export const Home: FC<HomeProps> = async ({
                 alt="Header"
                 style={{
                   width: "100%",
-                  maxHeight: "180px",
+                  maxHeight: "280px",
                   objectFit: "cover",
                   borderRadius: "0.5rem 0.5rem 0 0",
                 }}
@@ -271,7 +287,7 @@ export const Home: FC<HomeProps> = async ({
       </article>
 
       {/* Top Auth Card ... now includes Edit/Cancel/Save buttons */}
-      <article class="card" style={{ padding: "1rem", marginBottom: "1.5rem" }}>
+      <article class="card">
         <div
           style={{
             display: "flex",
@@ -319,18 +335,12 @@ export const Home: FC<HomeProps> = async ({
       {/* Follow Someone Card and New Post Card are now wrapped for auth-only visibility */}
       <div id="auth-only" style={{ display: "none" }}>
         {/* Follow Someone Card */}
-        <article
-          class="card"
-          style={{ padding: "1rem", marginBottom: "1.5rem" }}
-        >
+        <article class="card">
           <FollowForm />
         </article>
 
         {/* New Post Card */}
-        <article
-          class="card"
-          style={{ padding: "1rem", marginBottom: "1.5rem" }}
-        >
+        <article class="card">
           <form method="post" action={`/users/${user.username}/posts`}>
             <fieldset>
               <label>
@@ -344,11 +354,7 @@ export const Home: FC<HomeProps> = async ({
 
       {/* Timeline Section (posts already in cards) */}
       {posts.map((post) => (
-        <article
-          key={post._id}
-          class="card"
-          style={{ padding: "1rem", marginBottom: "1.5rem" }}
-        >
+        <article key={post._id} class="card">
           <strong>
             {post.remote && post.author.startsWith("http") ? (
               <a href={post.author} target="_blank" rel="noopener noreferrer">
