@@ -27,7 +27,12 @@ const keyCache = new Map<
   Array<{ privateKey: CryptoKey; publicKey: CryptoKey }>
 >();
 
-const PUBLIC_URL = process.env.PUBLIC_URL || "https://localhost:8000";
+const PUBLIC_URL = process.env.PUBLIC_URL;
+if (!PUBLIC_URL) {
+  throw new Error(
+    "PUBLIC_URL environment variable must be set to your production domain (e.g., https://gunac.ar)",
+  );
+}
 
 const federation = createFederation({
   kv: new MemoryKvStore(),
