@@ -791,33 +791,207 @@ export interface PostViewProps {
   post: IPost;
 }
 
-export const PostView: FC<PostViewProps> = ({ post }) => (
-  <article class="card" style={{ padding: "1rem" }}>
-    <header>
-      <strong>{post.author}</strong>
-    </header>
-    {/* biome-ignore lint/security/noDangerouslySetInnerHtml: Post content is sanitized */}
-    <div dangerouslySetInnerHTML={{ __html: post.content }} />
-    <footer>
-      <time dateTime={new Date(post.createdAt).toISOString()}>
-        {new Date(post.createdAt).toLocaleString()}
-      </time>
-    </footer>
-  </article>
-);
+export const PostView: FC<
+  PostViewProps & { user?: IUser; domain?: string }
+> = ({ post, user, domain }) => {
+  // Use user and domain if provided for avatar, display name, handle
+  return (
+    <article
+      class="card"
+      style={{
+        display: "flex",
+        gap: "1rem",
+        alignItems: "flex-start",
+        padding: "1.5rem",
+        marginBottom: "1.5rem",
+      }}
+    >
+      {/* Avatar */}
+      <div style={{ flex: "0 0 48px" }}>
+        <img
+          src={user?.avatarUrl || ""}
+          alt="Avatar"
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: "50%",
+            objectFit: "cover",
+            background: "#eee",
+          }}
+        />
+      </div>
+      {/* Post content and meta */}
+      <div style={{ flex: 1 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <div>
+            <span style={{ fontWeight: 600 }}>
+              {user?.displayName || post.author}
+            </span>
+            <span style={{ color: "#888", marginLeft: 8, fontSize: "0.95em" }}>
+              @{user?.username || post.author}
+              {domain ? `@${domain}` : ""}
+            </span>
+          </div>
+          <time
+            dateTime={new Date(post.createdAt).toISOString()}
+            style={{ color: "#888", fontSize: "0.95em" }}
+          >
+            {new Date(post.createdAt).toLocaleString()}
+          </time>
+        </div>
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: Post content is sanitized */}
+        <div
+          style={{ margin: "0.75em 0" }}
+          dangerouslySetInnerHTML={{ __html: post.content }}
+        />
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "1.5em",
+            fontSize: "0.98em",
+            color: "#666",
+          }}
+        >
+          {/* Like, Repost, Reply buttons (UI only) */}
+          <button
+            type="button"
+            class="secondary"
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "#c00",
+            }}
+            title="Like"
+          >
+            ❤️ 0
+          </button>
+          <button
+            type="button"
+            class="secondary"
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "#0ac",
+            }}
+            title="Repost"
+          >
+            🔄 0
+          </button>
+          <button
+            type="button"
+            class="secondary reply-btn"
+            data-post-id={post._id}
+            data-post-content={post.content}
+            data-post-author={user?.displayName || post.author}
+            data-post-handle={`@${user?.username || post.author}${domain ? `@${domain}` : ""}`}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "#888",
+            }}
+            title="Reply"
+          >
+            💬
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+};
 
-export interface PostPageProps extends ProfileProps, PostViewProps {}
+export interface PostPageProps extends ProfileProps, PostViewProps {
+  user?: IUser;
+  domain?: string;
+}
 
 export const PostPage: FC<PostPageProps> = (props) => (
   <>
-    <Profile
-      name={props.name}
-      username={props.username}
-      handle={props.handle}
-      followers={props.followers}
-      following={props.following}
-    />
-    <PostView post={props.post} />
+    <article class="card">
+      <div id="profile-view">
+        {props.user?.headerUrl && (
+          <div
+            style={{
+              margin: "-1.5rem -1.5rem 1rem -1.5rem",
+            }}
+          >
+            <img
+              src={props.user.headerUrl}
+              alt="Header"
+              style={{
+                width: "100%",
+                maxHeight: "280px",
+                objectFit: "cover",
+                borderRadius: "0.5rem 0.5rem 0 0",
+              }}
+            />
+          </div>
+        )}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "1rem",
+            marginBottom: "1rem",
+          }}
+        >
+          {props.user?.avatarUrl && (
+            <img
+              src={props.user.avatarUrl}
+              alt="Avatar"
+              style={{
+                width: "64px",
+                height: "64px",
+                borderRadius: "50%",
+                objectFit: "cover",
+              }}
+            />
+          )}
+          <div>
+            <h1 id="profile-displayName">
+              <a href="/">{props.user?.displayName || props.name}</a>
+            </h1>
+            <p>
+              <a
+                href={`/@${props.user?.username || props.username}`}
+                style={{ userSelect: "all" }}
+              >
+                {props.handle}
+              </a>{" "}
+              &middot;{" "}
+              <a
+                href={`/users/${props.user?.username || props.username}/followers`}
+              >
+                {props.followers === 1
+                  ? "1 follower"
+                  : `${props.followers} followers`}
+              </a>{" "}
+              &middot;{" "}
+              <a
+                href={`/users/${props.user?.username || props.username}/following`}
+              >
+                {props.following === 1
+                  ? "1 following"
+                  : `${props.following} following`}
+              </a>
+            </p>
+            <p id="profile-bio" style={{ marginTop: "0.5rem", color: "#666" }}>
+              {props.user?.bio || ""}
+            </p>
+          </div>
+        </div>
+      </div>
+    </article>
+    <PostView post={props.post} user={props.user} domain={props.domain} />
   </>
 );
 

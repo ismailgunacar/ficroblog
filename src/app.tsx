@@ -486,6 +486,7 @@ app.get("/users/:username/posts/:id", async (c) => {
 
   const url = new URL(c.req.url);
   const handle = `@${username}@${url.host}`;
+  const domain = c.req.header("host");
 
   return c.html(
     <Layout>
@@ -496,6 +497,8 @@ app.get("/users/:username/posts/:id", async (c) => {
         followers={followers}
         following={followingCount}
         post={post}
+        user={user}
+        domain={domain}
       />
     </Layout>,
   );
