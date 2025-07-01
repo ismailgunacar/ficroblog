@@ -2,35 +2,25 @@
   "type": "module",
   "dependencies": {
     "@dotenvx/dotenvx": "^1.45.1",
-    "@fedify/fedify": "^1.6.2",
+    "@fedify/fedify": "^1.7.1",
     "@hono/node-server": "^1.14.4",
-    "@js-temporal/polyfill": "^0.5.1",
     "@logtape/logtape": "^0.8.2",
-    "@types/bcrypt": "^5.0.2",
-    "@types/bcryptjs": "^2.4.6",
-    "@types/jsonwebtoken": "^9.0.10",
-    "bcrypt": "^6.0.0",
-    "bcryptjs": "^3.0.2",
-    "dotenv": "^16.5.0",
+    "dotenv": "^17.0.0",
     "hono": "^4.8.3",
-    "jsonwebtoken": "^9.0.2",
-    "luxon": "^3.6.1",
     "mongodb": "^6.17.0",
+    "mongoose": "^8.16.1",
+    "node-fetch": "^3.3.2",
     "stringify-entities": "^4.0.4",
     "tsx": "^4.20.3",
-    "undici-types": "^7.10.0",
     "x-forwarded-fetch": "^0.2.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
-    "@types/mongodb": "^4.0.6",
-    "@types/node": "^20.19.1",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.8.3"
+    "@types/node": "^24.0.8"
   },
   "scripts": {
     "dev": "dotenvx run -- tsx watch ./src/index.ts",
-    "prod": "dotenvx run -- node --import tsx ./src/index.ts",
-    "migrate-posts": "dotenvx run -- node migrate-posts.js"
-  }
+    "prod": "dotenvx run -- node --import tsx ./src/index.ts"
+  },
+  "packageManager": "pnpm@10.12.1+sha512.f0dda8580f0ee9481c5c79a1d927b9164f2c478e90992ad268bbb2465a736984391d6333d2c327913578b2804af33474ca554ba29c04a8b13060a717675ae3ac"
 }

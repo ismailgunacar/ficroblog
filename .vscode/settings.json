@@ -37,6 +37,5 @@
     "editor.codeActionsOnSave": {
       "source.organizeImports.biome": "always"
     }
-},
-"zencoder.enableRepoIndexing": true
+  }
 }
