@@ -1,5 +1,6 @@
 import type { FC } from "hono/jsx";
-import type { IFollow, IPost, IUser, Post } from "./models.js";
+import type { IFollow, IPost, IUser } from "./models.ts";
+import { Post } from "./models.ts";
 
 export const Layout: FC = (props) => (
   <html lang="en">
