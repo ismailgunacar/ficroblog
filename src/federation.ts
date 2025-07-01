@@ -176,25 +176,48 @@ federation
     }
   })
   .on(Create, async (ctx, create) => {
+    logger.info(`Received Create activity: ${create.id?.href}`);
+
     const object = await create.getObject();
-    if (!object || object.type !== "Note") return;
+    if (!object) {
+      logger.error(`Could not get object from Create activity`);
+      return;
+    }
+
+    logger.info(`Create activity object type: ${object.type}`);
+
+    // Only process Note objects (posts)
+    if (object.type !== "Note") {
+      logger.info(`Ignoring non-Note Create activity: ${object.type}`);
+      return;
+    }
+
     const content = object.content;
     const author =
       object.attribution?.href ||
       object.attributedTo?.href ||
       object.actor?.href;
 
-    if (author) {
-      await Post.create({
-        content,
-        author,
-        createdAt: new Date(object.published || Date.now()),
-        remote: true,
-        objectId: object.id?.href,
-      });
-      logger.info(
-        `Stored remote post from ${author}: ${content.substring(0, 50)}...`,
-      );
+    logger.info(`Processing Note from author: ${author}`);
+    logger.info(`Note content: ${content?.substring(0, 100)}...`);
+
+    if (author && content) {
+      try {
+        const post = await Post.create({
+          content,
+          author,
+          createdAt: new Date(object.published || Date.now()),
+          remote: true,
+          objectId: object.id?.href,
+        });
+
+        logger.info(`Successfully stored remote post with ID: ${post._id}`);
+        logger.info(`Post author: ${post.author}, remote: ${post.remote}`);
+      } catch (error) {
+        logger.error(`Failed to store remote post: ${error}`);
+      }
+    } else {
+      logger.error(`Missing author or content for remote post`);
     }
   });
 
