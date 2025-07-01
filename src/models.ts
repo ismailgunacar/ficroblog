@@ -27,6 +27,7 @@ export interface IPost extends Document {
   author: string; // username or actor URL for remote posts
   remote?: boolean; // whether this is a remote post
   objectId?: string; // ActivityPub object ID for remote posts
+  replyTo?: string; // parent post ID for threading
 }
 
 const PostSchema = new Schema<IPost>({
@@ -35,6 +36,7 @@ const PostSchema = new Schema<IPost>({
   author: { type: String, required: true },
   remote: { type: Boolean, default: false },
   objectId: { type: String },
+  replyTo: { type: String, required: false },
 });
 
 export const Post = model<IPost>("Post", PostSchema);

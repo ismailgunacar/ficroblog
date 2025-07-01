@@ -367,53 +367,72 @@ app.post("/users/:username/posts", async (c) => {
   if (!user) return c.redirect("/setup");
 
   const form = await c.req.formData();
-  const content = form.get("content")?.toString();
-  if (!content || content.trim() === "") {
+  // Accept multiple content[] fields for threads
+  let contents = form
+    .getAll("content[]")
+    .map((v) => v.toString())
+    .filter((v) => v.trim() !== "");
+  const replyTo = form.get("replyTo")?.toString() || undefined;
+  if (!contents.length) {
     return c.text("Content is required", 400);
   }
 
-  const post = await Post.create({
-    content: stringifyEntities(content, { escapeOnly: true }),
-    author: username,
-  });
-
-  // Send Create activity to followers
+  let lastPostId = replyTo;
   const ctx = fedi.createContext(c.req.raw, undefined);
   const publicUrl = `https://${c.req.header("host")}`;
 
-  const note = new Note({
-    id: new URL(`/users/${username}/posts/${post._id}`, publicUrl),
-    attribution: new URL(`/users/${username}`, publicUrl),
-    content: post.content,
-    mediaType: "text/html",
-    to: new URL("https://www.w3.org/ns/activitystreams#Public"),
-  });
-  logger.info(`Sending Create activity to followers for post ${post._id}`);
-  logger.info(`Note ID: ${note.id?.href}`);
-  logger.info(`Actor: ${publicUrl}/users/${username}`);
+  for (let i = 0; i < contents.length; i++) {
+    const content = contents[i];
+    // Create the post, linking to previous as replyTo
+    const post = await Post.create({
+      content: stringifyEntities(content, { escapeOnly: true }),
+      author: username,
+      replyTo: lastPostId,
+    });
 
-  // Check if we have any followers first
-  const followers: any[] = await FollowModel.find({
-    following: publicUrl + "/users/" + username,
-  }).exec();
-  logger.info(`Followers: ${followers.map((f) => f.follower).join(", ")}`);
-  if (followers.length === 0) {
-    logger.info(`No followers found, skipping delivery`);
-  } else {
+    // Prepare ActivityPub Note
+    const noteData = {
+      id: new URL(`/users/${username}/posts/${post._id}`, publicUrl),
+      attribution: new URL(`/users/${username}`, publicUrl),
+      content: post.content,
+      mediaType: "text/html",
+      to: new URL("https://www.w3.org/ns/activitystreams#Public"),
+    };
+    if (lastPostId) {
+      noteData.inReplyTo = new URL(
+        `/users/${username}/posts/${lastPostId}`,
+        publicUrl,
+      );
+    }
+    const note = new Note(noteData);
+    logger.info(`Sending Create activity to followers for post ${post._id}`);
+    logger.info(`Note ID: ${note.id?.href}`);
+    logger.info(`Actor: ${publicUrl}/users/${username}`);
+
+    // Check if we have any followers first
+    const followers = await FollowModel.find({
+      following: publicUrl + "/users/" + username,
+    }).exec();
     logger.info(`Followers: ${followers.map((f) => f.follower).join(", ")}`);
+    if (followers.length === 0) {
+      logger.info(`No followers found, skipping delivery`);
+    } else {
+      logger.info(`Followers: ${followers.map((f) => f.follower).join(", ")}`);
+    }
+
+    await ctx.sendActivity(
+      { identifier: username },
+      "followers",
+      new Create({
+        id: new URL(`#create-${post._id}`, `${publicUrl}/users/${username}`),
+        actor: new URL(`/users/${username}`, publicUrl),
+        object: note,
+      }),
+    );
+
+    logger.info(`Successfully sent Create activity to followers`);
+    lastPostId = post._id;
   }
-
-  await ctx.sendActivity(
-    { identifier: username },
-    "followers",
-    new Create({
-      id: new URL(`#create-${post._id}`, `${publicUrl}/users/${username}`),
-      actor: new URL(`/users/${username}`, publicUrl),
-      object: note,
-    }),
-  );
-
-  logger.info(`Successfully sent Create activity to followers`);
 
   return c.redirect("/");
 });

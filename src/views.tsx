@@ -26,6 +26,9 @@ export const Layout: FC = (props) => (
         input:not([type=checkbox],[type=radio]), select, textarea, [type=button], [type=reset], [type=submit] {
           margin-bottom: 0;
         }
+        textarea {
+          resize: none;
+        }
         @media (max-width: 600px) {
           .container {
             padding: 0.5rem;
@@ -78,11 +81,11 @@ export const SetupForm: FC = () => (
 
 export const FollowForm: FC = () => (
   <>
-    <h2>Follow someone</h2>
+    <h3>Follow</h3>
     <form method="post" action="/follow">
       <fieldset>
         <label>
-          Handle{" "}
+          {" "}
           <input
             type="text"
             name="handle"
@@ -344,56 +347,196 @@ export const Home: FC<HomeProps> = async ({
 
         {/* New Post Card */}
         <article class="card">
-          <form method="post" action={`/users/${user.username}/posts`}>
-            <fieldset>
-              <label>
-                <textarea name="content" required placeholder="What's up?" />
-              </label>
-            </fieldset>
-            <input type="submit" value="Post" />
+          <form
+            id="post-form"
+            method="post"
+            action={`/users/${user.username}/posts`}
+          >
+            {/* Parent post preview (shown when replying) */}
+            <div
+              id="reply-parent"
+              style={{
+                display: "none",
+                marginBottom: "1em",
+                background: "#f8f8f8",
+                borderRadius: "0.5em",
+                padding: "0.75em",
+                border: "1px solid #eee",
+              }}
+            />
+            <input id="replyTo-input" type="hidden" name="replyTo" value="" />
+            <div id="thread-composer">
+              <div
+                class="thread-textarea"
+                style={{
+                  display: "flex",
+                  alignItems: "flex-end",
+                  gap: "0.5em",
+                  marginBottom: "0.5em",
+                }}
+              >
+                <textarea
+                  name="content[]"
+                  required
+                  placeholder="What's up?"
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="button"
+                  id="add-thread-btn"
+                  title="Add another to thread"
+                  style={{
+                    fontSize: "1.5em",
+                    padding: "0 0.5em",
+                    background: "none",
+                    border: "none",
+                    color: "#0ac",
+                    cursor: "pointer",
+                  }}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+            <input
+              id="post-submit-btn"
+              type="submit"
+              value="Post"
+              style={{ marginTop: "1em" }}
+            />
           </form>
         </article>
       </div>
 
       {/* Timeline Section (posts already in cards) */}
-      {posts.map((post) => (
-        <article key={post._id} class="card">
-          <strong>
-            {post.remote && post.author.startsWith("http") ? (
-              <a href={post.author} target="_blank" rel="noopener noreferrer">
-                {post.author}
-              </a>
-            ) : (
-              post.author
-            )}
-          </strong>
-          {/* biome-ignore lint/security/noDangerouslySetInnerHtml: Post content is sanitized */}
-          <div dangerouslySetInnerHTML={{ __html: post.content }} />
-          <div
+      {posts.map((post) => {
+        // Compute domain for handle
+        let domain = "";
+        if (typeof window !== "undefined" && window.location) {
+          domain = window.location.host;
+        } else {
+          domain = "localhost";
+        }
+        return (
+          <article
+            key={post._id}
+            class="card"
             style={{
-              fontSize: "0.9em",
-              color: "#666",
-              marginTop: "0.5rem",
+              display: "flex",
+              gap: "1rem",
+              alignItems: "flex-start",
+              padding: "1.5rem",
+              marginBottom: "1.5rem",
             }}
           >
-            <time dateTime={new Date(post.createdAt).toISOString()}>
-              {new Date(post.createdAt).toLocaleString()}
-            </time>
-            {!post.remote && (
-              <>
-                {" "}
-                &middot;{" "}
+            {/* Avatar */}
+            <div style={{ flex: "0 0 48px" }}>
+              {/* TODO: Replace with actual avatar lookup if available */}
+              <img
+                src={user.avatarUrl || ""}
+                alt="Avatar"
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                  background: "#eee",
+                }}
+              />
+            </div>
+            {/* Post content and meta */}
+            <div style={{ flex: 1 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <div>
+                  <span style={{ fontWeight: 600 }}>{user.displayName}</span>
+                  <span
+                    style={{ color: "#888", marginLeft: 8, fontSize: "0.95em" }}
+                  >
+                    @{user.username}@{domain}
+                  </span>
+                </div>
+                <time
+                  dateTime={new Date(post.createdAt).toISOString()}
+                  style={{ color: "#888", fontSize: "0.95em" }}
+                >
+                  {new Date(post.createdAt).toLocaleString()}
+                </time>
+              </div>
+              {/* biome-ignore lint/security/noDangerouslySetInnerHtml: Post content is sanitized */}
+              <div
+                style={{ margin: "0.75em 0" }}
+                dangerouslySetInnerHTML={{ __html: post.content }}
+              />
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "1.5em",
+                  fontSize: "0.98em",
+                  color: "#666",
+                }}
+              >
                 <a
                   href={`/users/${post.author}/posts/${post._id}`}
                   class="secondary"
                 >
-                  permalink
+                  Permalink
                 </a>
-              </>
-            )}
-          </div>
-        </article>
-      ))}
+                {/* Like, Repost, Reply buttons (UI only) */}
+                <button
+                  type="button"
+                  class="secondary"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "#c00",
+                  }}
+                  title="Like"
+                >
+                  ❤️ 0
+                </button>
+                <button
+                  type="button"
+                  class="secondary"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "#0ac",
+                  }}
+                  title="Repost"
+                >
+                  🔄 0
+                </button>
+                <button
+                  type="button"
+                  class="secondary reply-btn"
+                  data-post-id={post._id}
+                  data-post-content={post.content}
+                  data-post-author={user.displayName}
+                  data-post-handle={`@${user.username}@${domain}`}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "#888",
+                  }}
+                  title="Reply"
+                >
+                  💬
+                </button>
+              </div>
+            </div>
+          </article>
+        );
+      })}
 
       {/* Seamless login/logout JS */}
       {/* biome-ignore lint/security/noDangerouslySetInnerHtml: Inline script for login/logout and profile edit UI */}
@@ -568,6 +711,65 @@ export const Home: FC<HomeProps> = async ({
       } else {
         alert('Failed to update profile.');
       }
+    });
+  }
+
+  // Reply button logic
+  document.querySelectorAll('.reply-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var postId = btn.getAttribute('data-post-id');
+      var postContent = btn.getAttribute('data-post-content');
+      var postAuthor = btn.getAttribute('data-post-author');
+      var postHandle = btn.getAttribute('data-post-handle');
+      var replyInput = document.getElementById('replyTo-input');
+      var replyParent = document.getElementById('reply-parent');
+      var postForm = document.getElementById('post-form');
+      if (replyInput && replyParent && postForm) {
+        replyInput.value = postId;
+        replyParent.style.display = '';
+        replyParent.innerHTML = '<b>Replying to ' + postAuthor + ' ' + postHandle + ':</b><br><span style="color:#666">' + postContent + '</span>';
+        postForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        postForm.querySelector('textarea').focus();
+      }
+    });
+  });
+
+  // Thread composer logic
+  var threadComposer = document.getElementById('thread-composer');
+  var addThreadBtn = document.getElementById('add-thread-btn');
+  var postSubmitBtn = document.getElementById('post-submit-btn');
+  if (threadComposer && addThreadBtn && postSubmitBtn) {
+    addThreadBtn.addEventListener('click', function() {
+      var newDiv = document.createElement('div');
+      newDiv.className = 'thread-textarea';
+      newDiv.style.display = 'flex';
+      newDiv.style.alignItems = 'flex-end';
+      newDiv.style.gap = '0.5em';
+      newDiv.style.marginBottom = '0.5em';
+      var textarea = document.createElement('textarea');
+      textarea.name = 'content[]';
+      textarea.required = true;
+      textarea.placeholder = "Add another to thread...";
+      textarea.style.flex = '1';
+      var removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.title = 'Remove this post';
+      removeBtn.textContent = '–';
+      removeBtn.style.fontSize = '1.5em';
+      removeBtn.style.padding = '0 0.5em';
+      removeBtn.style.background = 'none';
+      removeBtn.style.border = 'none';
+      removeBtn.style.color = '#c00';
+      removeBtn.style.cursor = 'pointer';
+      removeBtn.addEventListener('click', function() {
+        threadComposer.removeChild(newDiv);
+      });
+      newDiv.appendChild(textarea);
+      newDiv.appendChild(removeBtn);
+      threadComposer.appendChild(newDiv);
+      // Move the Post button to the bottom
+      threadComposer.parentNode.appendChild(postSubmitBtn);
+      textarea.focus();
     });
   }
 })();
