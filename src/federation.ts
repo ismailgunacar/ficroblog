@@ -55,8 +55,18 @@ federation
       publicKey: keys[0]?.cryptographicKey,
       assertionMethods: keys.map((k) => k.multikey),
       summary: user?.bio || undefined,
-      icon: user?.avatarUrl ? new Image({ url: user.avatarUrl }) : undefined,
-      image: user?.headerUrl ? new Image({ url: user.headerUrl }) : undefined,
+      icon:
+        user?.avatarUrl &&
+        (user.avatarUrl.startsWith("http://") ||
+          user.avatarUrl.startsWith("https://"))
+          ? new Image({ url: new URL(user.avatarUrl) })
+          : undefined,
+      image:
+        user?.headerUrl &&
+        (user.headerUrl.startsWith("http://") ||
+          user.headerUrl.startsWith("https://"))
+          ? new Image({ url: new URL(user.headerUrl) })
+          : undefined,
     });
 
     return actor;
