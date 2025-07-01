@@ -320,28 +320,33 @@ federation.setObjectDispatcher(
 federation.setOutboxDispatcher(
   "/users/{identifier}/outbox",
   async (ctx, identifier, cursor) => {
+    logger.info(`Outbox dispatcher called for ${identifier}`);
+
     const posts = await Post.find({ author: identifier })
       .sort({ createdAt: -1 })
       .limit(20)
       .exec();
 
-    const activities = posts.map(
-      (post) =>
-        new Create({
-          id: new URL(`#create-${post._id}`, ctx.getActorUri(identifier).href),
-          actor: ctx.getActorUri(identifier),
-          object: new Note({
-            id: ctx.getObjectUri(Note, { identifier, id: post._id.toString() }),
-            attribution: ctx.getActorUri(identifier),
-            to: PUBLIC_COLLECTION,
-            content: post.content,
-            mediaType: "text/html",
-            published: post.createdAt,
-          }),
-          published: post.createdAt,
-        }),
-    );
+    logger.info(`Found ${posts.length} posts for outbox`);
 
+    const activities = posts.map((post) => {
+      logger.info(`Creating activity for post ${post._id}`);
+      return new Create({
+        id: new URL(`#create-${post._id}`, ctx.getActorUri(identifier).href),
+        actor: ctx.getActorUri(identifier),
+        object: new Note({
+          id: ctx.getObjectUri(Note, { identifier, id: post._id.toString() }),
+          attribution: ctx.getActorUri(identifier),
+          to: PUBLIC_COLLECTION,
+          content: post.content,
+          mediaType: "text/html",
+          // Don't set published field for now to avoid Temporal issues
+        }),
+        // Don't set published field for now to avoid Temporal issues
+      });
+    });
+
+    logger.info(`Returning ${activities.length} activities for outbox`);
     return { items: activities };
   },
 );
