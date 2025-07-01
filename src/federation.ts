@@ -64,14 +64,15 @@ federation
       return cachedKeys;
     }
 
-    // Generate only one key type for better performance
+    // Generate both key types for cryptographic proofs
     logger.info(`Generating new keys for ${identifier}`);
     const rsaKeys = await generateCryptoKeyPair("RSASSA-PKCS1-v1_5");
+    const ed25519Keys = await generateCryptoKeyPair("Ed25519");
 
-    const keys = [rsaKeys];
+    const keys = [rsaKeys, ed25519Keys];
     keyCache.set(identifier, keys);
 
-    logger.info(`Generated and cached keys for ${identifier}: RSA only`);
+    logger.info(`Generated and cached keys for ${identifier}: RSA and Ed25519`);
 
     return keys;
   });
