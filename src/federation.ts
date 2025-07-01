@@ -46,6 +46,7 @@ federation
       followers: ctx.getFollowersUri(identifier),
       following: ctx.getFollowingUri(identifier),
       inbox: ctx.getInboxUri(identifier),
+      outbox: ctx.getOutboxUri(identifier),
       endpoints: new Endpoints({
         sharedInbox: ctx.getInboxUri(),
       }),
