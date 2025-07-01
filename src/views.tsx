@@ -182,7 +182,6 @@ export const Home: FC<HomeProps> = async ({
           <div
             style={{
               display: "flex",
-              alignItems: "center",
               gap: "1rem",
               marginBottom: "1rem",
             }}
@@ -593,7 +592,7 @@ export const Home: FC<HomeProps> = async ({
                   }}
                   title="Reply"
                 >
-                  💬
+                  💬 0
                 </button>
               </div>
             </div>
@@ -1035,7 +1034,7 @@ export const PostView: FC<
             }}
             title="Reply"
           >
-            💬
+            💬 0
           </button>
         </div>
       </div>
@@ -1073,7 +1072,6 @@ export const PostPage: FC<PostPageProps> = (props) => (
         <div
           style={{
             display: "flex",
-            alignItems: "center",
             gap: "1rem",
             marginBottom: "1rem",
           }}
