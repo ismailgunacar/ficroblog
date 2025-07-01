@@ -554,7 +554,7 @@ async function fetchRemoteInbox(actorUrl: string): Promise<string | null> {
   }
 }
 
-// Like a post
+// Like a post (toggle: like/unlike)
 app.post("/like", async (c) => {
   const user = await User.findOne().exec();
   if (!user) return c.redirect("/setup");
@@ -565,49 +565,82 @@ app.post("/like", async (c) => {
   const post = await Post.findById(postId).exec();
   if (!post) return c.redirect("/");
   const actorUrl = `https://${c.req.header("host")}/users/${user.username}`;
-  if (post.likes?.includes(actorUrl))
-    return c.redirect(c.req.header("referer") || "/");
-  post.likes = post.likes || [];
-  post.likes.push(actorUrl);
-  await post.save();
-  // Federation: send Like activity
   const ctx = fedi.createContext(c.req.raw, undefined);
   const publicUrl = `https://${c.req.header("host")}`;
   const targetObject = objectId
     ? new URL(objectId)
     : new URL(`/users/${user.username}/posts/${post._id}`, publicUrl);
-  if (post.remote && post.author && post.author.startsWith("http")) {
-    // Remote post: fetch actor inbox
-    const inbox = await fetchRemoteInbox(post.author);
-    if (inbox) {
+  const hasLiked = post.likes?.includes(actorUrl);
+  if (hasLiked) {
+    // Unlike: remove from array and federate Undo(Like)
+    post.likes = post.likes.filter((a) => a !== actorUrl);
+    await post.save();
+    if (post.remote && post.author && post.author.startsWith("http")) {
+      const inbox = await fetchRemoteInbox(post.author);
+      if (inbox) {
+        await ctx.sendActivity(
+          { identifier: user.username },
+          { id: new URL(post.author), inboxId: new URL(inbox) },
+          new Undo({
+            id: new URL(`#undo-like-${Date.now()}`, actorUrl),
+            actor: new URL(actorUrl),
+            object: new Like({
+              id: new URL(`#like-${Date.now()}`, actorUrl),
+              actor: new URL(actorUrl),
+              object: targetObject,
+            }),
+          }),
+        );
+      }
+    } else if (!post.remote) {
       await ctx.sendActivity(
         { identifier: user.username },
-        { id: new URL(post.author), inboxId: new URL(inbox) },
+        "followers",
+        new Undo({
+          id: new URL(`#undo-like-${Date.now()}`, actorUrl),
+          actor: new URL(actorUrl),
+          object: new Like({
+            id: new URL(`#like-${Date.now()}`, actorUrl),
+            actor: new URL(actorUrl),
+            object: targetObject,
+          }),
+        }),
+      );
+    }
+  } else {
+    // Like: add to array and federate Like
+    post.likes = post.likes || [];
+    post.likes.push(actorUrl);
+    await post.save();
+    if (post.remote && post.author && post.author.startsWith("http")) {
+      const inbox = await fetchRemoteInbox(post.author);
+      if (inbox) {
+        await ctx.sendActivity(
+          { identifier: user.username },
+          { id: new URL(post.author), inboxId: new URL(inbox) },
+          new Like({
+            id: new URL(`#like-${Date.now()}`, actorUrl),
+            actor: new URL(actorUrl),
+            object: targetObject,
+          }),
+        );
+      }
+    } else if (!post.remote) {
+      await ctx.sendActivity(
+        { identifier: user.username },
+        "followers",
         new Like({
           id: new URL(`#like-${Date.now()}`, actorUrl),
           actor: new URL(actorUrl),
           object: targetObject,
         }),
       );
-    } else {
-      logger.error(`Could not fetch inbox for remote actor: ${post.author}`);
     }
-  } else if (!post.remote) {
-    // Local post: federate Like to followers
-    await ctx.sendActivity(
-      { identifier: user.username },
-      "followers",
-      new Like({
-        id: new URL(`#like-${Date.now()}`, actorUrl),
-        actor: new URL(actorUrl),
-        object: targetObject,
-      }),
-    );
   }
   return c.redirect(c.req.header("referer") || "/");
 });
 
-// Repost (Announce) a post
+// Repost (Announce) a post (toggle: repost/unrepost)
 app.post("/repost", async (c) => {
   const user = await User.findOne().exec();
   if (!user) return c.redirect("/setup");
@@ -618,44 +651,77 @@ app.post("/repost", async (c) => {
   const post = await Post.findById(postId).exec();
   if (!post) return c.redirect("/");
   const actorUrl = `https://${c.req.header("host")}/users/${user.username}`;
-  if (post.reposts?.includes(actorUrl))
-    return c.redirect(c.req.header("referer") || "/");
-  post.reposts = post.reposts || [];
-  post.reposts.push(actorUrl);
-  await post.save();
-  // Federation: send Announce activity
   const ctx = fedi.createContext(c.req.raw, undefined);
   const publicUrl = `https://${c.req.header("host")}`;
   const targetObject = objectId
     ? new URL(objectId)
     : new URL(`/users/${user.username}/posts/${post._id}`, publicUrl);
-  if (post.remote && post.author && post.author.startsWith("http")) {
-    // Remote post: fetch actor inbox
-    const inbox = await fetchRemoteInbox(post.author);
-    if (inbox) {
+  const hasReposted = post.reposts?.includes(actorUrl);
+  if (hasReposted) {
+    // Unrepost: remove from array and federate Undo(Announce)
+    post.reposts = post.reposts.filter((a) => a !== actorUrl);
+    await post.save();
+    if (post.remote && post.author && post.author.startsWith("http")) {
+      const inbox = await fetchRemoteInbox(post.author);
+      if (inbox) {
+        await ctx.sendActivity(
+          { identifier: user.username },
+          { id: new URL(post.author), inboxId: new URL(inbox) },
+          new Undo({
+            id: new URL(`#undo-announce-${Date.now()}`, actorUrl),
+            actor: new URL(actorUrl),
+            object: new Announce({
+              id: new URL(`#announce-${Date.now()}`, actorUrl),
+              actor: new URL(actorUrl),
+              object: targetObject,
+            }),
+          }),
+        );
+      }
+    } else if (!post.remote) {
       await ctx.sendActivity(
         { identifier: user.username },
-        { id: new URL(post.author), inboxId: new URL(inbox) },
+        "followers",
+        new Undo({
+          id: new URL(`#undo-announce-${Date.now()}`, actorUrl),
+          actor: new URL(actorUrl),
+          object: new Announce({
+            id: new URL(`#announce-${Date.now()}`, actorUrl),
+            actor: new URL(actorUrl),
+            object: targetObject,
+          }),
+        }),
+      );
+    }
+  } else {
+    // Repost: add to array and federate Announce
+    post.reposts = post.reposts || [];
+    post.reposts.push(actorUrl);
+    await post.save();
+    if (post.remote && post.author && post.author.startsWith("http")) {
+      const inbox = await fetchRemoteInbox(post.author);
+      if (inbox) {
+        await ctx.sendActivity(
+          { identifier: user.username },
+          { id: new URL(post.author), inboxId: new URL(inbox) },
+          new Announce({
+            id: new URL(`#announce-${Date.now()}`, actorUrl),
+            actor: new URL(actorUrl),
+            object: targetObject,
+          }),
+        );
+      }
+    } else if (!post.remote) {
+      await ctx.sendActivity(
+        { identifier: user.username },
+        "followers",
         new Announce({
           id: new URL(`#announce-${Date.now()}`, actorUrl),
           actor: new URL(actorUrl),
           object: targetObject,
         }),
       );
-    } else {
-      logger.error(`Could not fetch inbox for remote actor: ${post.author}`);
     }
-  } else if (!post.remote) {
-    // Local post: federate Announce to followers
-    await ctx.sendActivity(
-      { identifier: user.username },
-      "followers",
-      new Announce({
-        id: new URL(`#announce-${Date.now()}`, actorUrl),
-        actor: new URL(actorUrl),
-        object: targetObject,
-      }),
-    );
   }
   return c.redirect(c.req.header("referer") || "/");
 });
