@@ -442,6 +442,18 @@ export const Home: FC<HomeProps> = async ({
 
       {/* Timeline Section (posts already in cards) */}
       {allPosts.map((post) => {
+        // Determine if this is a remote post and get the correct author info
+        const isRemote = post.remote;
+        const displayName = isRemote
+          ? post.remoteAuthorName || post.author
+          : user.displayName;
+        const avatarUrl = isRemote
+          ? post.remoteAuthorAvatar || ""
+          : user.avatarUrl;
+        const handle = isRemote
+          ? post.author
+          : `@${user.username}@${postDomain}`;
+
         return (
           <article
             key={post._id}
@@ -456,9 +468,8 @@ export const Home: FC<HomeProps> = async ({
           >
             {/* Avatar */}
             <div style={{ flex: "0 0 48px" }}>
-              {/* TODO: Replace with actual avatar lookup if available */}
               <img
-                src={user.avatarUrl || ""}
+                src={avatarUrl || ""}
                 alt="Avatar"
                 style={{
                   width: 48,
@@ -479,11 +490,11 @@ export const Home: FC<HomeProps> = async ({
                 }}
               >
                 <div>
-                  <span style={{ fontWeight: 600 }}>{user.displayName}</span>
+                  <span style={{ fontWeight: 600 }}>{displayName}</span>
                   <span
                     style={{ color: "#888", marginLeft: 8, fontSize: "0.95em" }}
                   >
-                    @{user.username}@{postDomain}
+                    {handle}
                   </span>
                 </div>
                 <time
@@ -545,8 +556,8 @@ export const Home: FC<HomeProps> = async ({
                   class="secondary reply-btn"
                   data-post-id={post._id}
                   data-post-content={post.content}
-                  data-post-author={user.displayName}
-                  data-post-handle={`@${user.username}@${postDomain}`}
+                  data-post-author={displayName}
+                  data-post-handle={handle}
                   style={{
                     background: "none",
                     border: "none",

@@ -210,11 +210,7 @@ federation
     }
 
     const content = object.content;
-    const author =
-      object.attribution?.href ||
-      object.attributedTo?.href ||
-      object.actor?.href ||
-      create.actorId?.href;
+    const author = object.attributionId?.href || create.actorId?.href;
 
     logger.info(`Processing Note from author: ${author}`);
     logger.info(`Note content: ${content?.substring(0, 100)}...`);
@@ -233,16 +229,37 @@ federation
           }
         }
 
+        // Extract remote author info from the author URL
+        let remoteAuthorName = author;
+        let remoteAuthorAvatar = "";
+        let remoteAuthorUrl = author;
+
+        // Try to extract a display name from the author URL
+        try {
+          const url = new URL(author);
+          const pathParts = url.pathname.split("/").filter(Boolean);
+          if (pathParts.length > 0) {
+            remoteAuthorName = pathParts[pathParts.length - 1];
+          }
+        } catch (e) {
+          // If URL parsing fails, use the full author as name
+          remoteAuthorName = author;
+        }
+
         const post = await Post.create({
           content,
           author,
           createdAt: publishedDate,
           remote: true,
           objectId: object.id?.href,
+          remoteAuthorName,
+          remoteAuthorAvatar,
+          remoteAuthorUrl,
         });
 
         logger.info(`Successfully stored remote post with ID: ${post._id}`);
         logger.info(`Post author: ${post.author}, remote: ${post.remote}`);
+        logger.info(`Remote author name: ${post.remoteAuthorName}`);
       } catch (error) {
         logger.error(`Failed to store remote post: ${error}`);
       }
@@ -256,10 +273,8 @@ federation
     logger.info(
       `Received Delete activity: ${del.id?.href || del.id || "unknown"}`,
     );
-    logger.info(`Delete actor: ${del.actorId?.href || del.actor || "unknown"}`);
-    logger.info(
-      `Delete object: ${del.objectId?.href || del.object || "unknown"}`,
-    );
+    logger.info(`Delete actor: ${del.actorId?.href || "unknown"}`);
+    logger.info(`Delete object: ${del.objectId?.href || "unknown"}`);
     // For now, just log the deletion. You could add cleanup logic here if desired.
     // Respond with 202 Accepted
     return ctx.res?.status(202);

@@ -1,22 +1,21 @@
-import { Schema, model } from "mongoose";
-import type { Document } from "mongoose";
+import { type Document, Schema, model } from "mongoose";
 
 export interface IUser extends Document {
   username: string;
   displayName: string;
-  passwordHash: string;
   bio?: string;
   avatarUrl?: string;
   headerUrl?: string;
+  passwordHash: string;
 }
 
 const UserSchema = new Schema<IUser>({
   username: { type: String, required: true, unique: true },
   displayName: { type: String, required: true },
+  bio: { type: String },
+  avatarUrl: { type: String },
+  headerUrl: { type: String },
   passwordHash: { type: String, required: true },
-  bio: { type: String, required: false, default: "" },
-  avatarUrl: { type: String, required: false, default: "" },
-  headerUrl: { type: String, required: false, default: "" },
 });
 
 export const User = model<IUser>("User", UserSchema);
@@ -28,6 +27,10 @@ export interface IPost extends Document {
   remote?: boolean; // whether this is a remote post
   objectId?: string; // ActivityPub object ID for remote posts
   replyTo?: string; // parent post ID for threading
+  // Remote author info (for remote posts)
+  remoteAuthorName?: string;
+  remoteAuthorAvatar?: string;
+  remoteAuthorUrl?: string;
 }
 
 const PostSchema = new Schema<IPost>({
@@ -37,43 +40,43 @@ const PostSchema = new Schema<IPost>({
   remote: { type: Boolean, default: false },
   objectId: { type: String },
   replyTo: { type: String, required: false },
+  // Remote author info
+  remoteAuthorName: { type: String },
+  remoteAuthorAvatar: { type: String },
+  remoteAuthorUrl: { type: String },
 });
 
 export const Post = model<IPost>("Post", PostSchema);
 
 export interface IFollow extends Document {
-  following: string; // actor URI being followed
-  follower: string; // actor URI of the follower
+  follower: string; // actor URL
+  following: string; // actor URL
   createdAt: Date;
 }
 
 const FollowSchema = new Schema<IFollow>({
-  following: { type: String, required: true },
   follower: { type: String, required: true },
+  following: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
 });
-
-FollowSchema.index({ following: 1, follower: 1 }, { unique: true });
 
 export const Follow = model<IFollow>("Follow", FollowSchema);
 
 export interface IFollowing extends Document {
-  follower: string; // actor URI of the follower (our user)
-  following: string; // actor URI being followed
+  follower: string; // actor URL
+  following: string; // actor URL
+  accepted: boolean;
+  acceptedAt?: Date;
   createdAt: Date;
-  accepted?: boolean; // whether the follow was accepted
-  acceptedAt?: Date; // when the follow was accepted
 }
 
 const FollowingSchema = new Schema<IFollowing>({
   follower: { type: String, required: true },
   following: { type: String, required: true },
-  createdAt: { type: Date, default: Date.now },
   accepted: { type: Boolean, default: false },
   acceptedAt: { type: Date },
+  createdAt: { type: Date, default: Date.now },
 });
-
-FollowingSchema.index({ follower: 1, following: 1 }, { unique: true });
 
 export const Following = model<IFollowing>("Following", FollowingSchema);
 
