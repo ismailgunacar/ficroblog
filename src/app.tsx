@@ -219,14 +219,16 @@ app.get("/", async (c) => {
   const url = new URL(c.req.url);
   const handle = `@${user.username}@${url.host}`;
   const domain = c.req.header("host");
+  const isAuthed = !!c.get("sessionUser");
 
   return c.html(
-    <Layout>
+    <Layout isAuthed={isAuthed}>
       <Home
         user={user}
         handle={handle}
         followers={followers}
         following={followingCount}
+        isAuthed={isAuthed}
         {...(domain ? { domain } : {})}
       />
     </Layout>,
@@ -357,6 +359,7 @@ app.get("/users/:username", async (c) => {
   const url = new URL(c.req.url);
   const handle = `@${username}@${url.host}`;
   const domain = c.req.header("host");
+  const isAuthed = !!c.get("sessionUser");
 
   // Fetch this user's posts
   const posts = await Post.find({ author: username })
@@ -364,7 +367,7 @@ app.get("/users/:username", async (c) => {
     .exec();
 
   return c.html(
-    <Layout>
+    <Layout isAuthed={isAuthed}>
       <Home
         user={user}
         handle={handle}
@@ -372,6 +375,7 @@ app.get("/users/:username", async (c) => {
         following={followingCount}
         posts={posts}
         isProfilePage={true}
+        isAuthed={isAuthed}
         {...(domain ? { domain } : {})}
       />
     </Layout>,
@@ -487,9 +491,10 @@ app.get("/users/:username/posts/:id", async (c) => {
   const url = new URL(c.req.url);
   const handle = `@${username}@${url.host}`;
   const domain = c.req.header("host");
+  const isAuthed = !!c.get("sessionUser");
 
   return c.html(
-    <Layout>
+    <Layout isAuthed={isAuthed}>
       <PostPage
         name={user.displayName}
         username={user.username}
@@ -499,6 +504,7 @@ app.get("/users/:username/posts/:id", async (c) => {
         post={post}
         user={user}
         domain={domain}
+        isAuthed={isAuthed}
       />
     </Layout>,
   );
@@ -541,6 +547,52 @@ app.get("/users/:username/following", async (c) => {
       <FollowingList following={following} isAuthed={isAuthed} />
     </Layout>,
   );
+});
+
+// Like a post
+app.post("/posts/:id/like", async (c) => {
+  const user = await User.findOne().exec();
+  if (!user || !c.get("sessionUser"))
+    return c.json({ ok: false, error: "Unauthorized" }, 401);
+  const postId = c.req.param("id");
+  const post = await Post.findById(postId).exec();
+  if (!post) return c.json({ ok: false, error: "Not found" }, 404);
+  const actor = user.username;
+  const idx = post.likes?.indexOf(actor) ?? -1;
+  if (idx === -1) {
+    post.likes?.push(actor);
+  } else {
+    post.likes?.splice(idx, 1);
+  }
+  await post.save();
+  return c.json({
+    ok: true,
+    liked: idx === -1,
+    count: post.likes?.length || 0,
+  });
+});
+
+// Repost a post
+app.post("/posts/:id/repost", async (c) => {
+  const user = await User.findOne().exec();
+  if (!user || !c.get("sessionUser"))
+    return c.json({ ok: false, error: "Unauthorized" }, 401);
+  const postId = c.req.param("id");
+  const post = await Post.findById(postId).exec();
+  if (!post) return c.json({ ok: false, error: "Not found" }, 404);
+  const actor = user.username;
+  const idx = post.reposts?.indexOf(actor) ?? -1;
+  if (idx === -1) {
+    post.reposts?.push(actor);
+  } else {
+    post.reposts?.splice(idx, 1);
+  }
+  await post.save();
+  return c.json({
+    ok: true,
+    reposted: idx === -1,
+    count: post.reposts?.length || 0,
+  });
 });
 
 export default app;

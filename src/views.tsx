@@ -149,6 +149,7 @@ export interface HomeProps {
   posts?: IPost[];
   isProfilePage?: boolean;
   domain?: string;
+  isAuthed?: boolean;
 }
 
 export const Home: FC<HomeProps> = async ({
@@ -159,6 +160,7 @@ export const Home: FC<HomeProps> = async ({
   posts,
   isProfilePage,
   domain,
+  isAuthed,
 }) => {
   // If posts are provided (profile page), use them; otherwise fetch all
   const allPosts = posts ?? (await Post.find().sort({ createdAt: -1 }).exec());
@@ -482,6 +484,13 @@ export const Home: FC<HomeProps> = async ({
           }
         }
 
+        // Like/Repost logic for single post view
+        const localUser = user.username;
+        const liked = post.likes && post.likes.includes(localUser);
+        const reposted = post.reposts && post.reposts.includes(localUser);
+        const likeCount = post.likes ? post.likes.length : 0;
+        const repostCount = post.reposts ? post.reposts.length : 0;
+
         return (
           <article
             key={post._id}
@@ -560,29 +569,35 @@ export const Home: FC<HomeProps> = async ({
                 {/* Like, Repost, Reply buttons (UI only) */}
                 <button
                   type="button"
-                  class="secondary"
+                  class={`secondary like-btn${liked ? " liked" : ""}`}
+                  data-post-id={post._id}
+                  disabled={!isAuthed}
                   style={{
                     background: "none",
                     border: "none",
-                    cursor: "pointer",
-                    color: "#c00",
+                    cursor: isAuthed ? "pointer" : "not-allowed",
+                    color: liked ? "#c00" : "#c00",
+                    fontWeight: liked ? 700 : 400,
                   }}
                   title="Like"
                 >
-                  ❤️ 0
+                  ❤️ {likeCount}
                 </button>
                 <button
                   type="button"
-                  class="secondary"
+                  class={`secondary repost-btn${reposted ? " reposted" : ""}`}
+                  data-post-id={post._id}
+                  disabled={!isAuthed}
                   style={{
                     background: "none",
                     border: "none",
-                    cursor: "pointer",
-                    color: "#0ac",
+                    cursor: isAuthed ? "pointer" : "not-allowed",
+                    color: reposted ? "#0ac" : "#0ac",
+                    fontWeight: reposted ? 700 : 400,
                   }}
                   title="Repost"
                 >
-                  🔄 0
+                  🔄 {repostCount}
                 </button>
                 <button
                   type="button"
@@ -918,6 +933,33 @@ export const Home: FC<HomeProps> = async ({
       }
     });
   }
+
+  document.querySelectorAll('.like-btn').forEach(function(btn) {
+    btn.addEventListener('click', async function() {
+      if (btn.disabled) return;
+      const postId = btn.getAttribute('data-post-id');
+      const res = await fetch('/posts/' + postId + '/like', { method: 'POST' });
+      const data = await res.json();
+      if (data.ok) {
+        btn.innerHTML = '❤️ ' + data.count;
+        if (data.liked) btn.classList.add('liked');
+        else btn.classList.remove('liked');
+      }
+    });
+  });
+  document.querySelectorAll('.repost-btn').forEach(function(btn) {
+    btn.addEventListener('click', async function() {
+      if (btn.disabled) return;
+      const postId = btn.getAttribute('data-post-id');
+      const res = await fetch('/posts/' + postId + '/repost', { method: 'POST' });
+      const data = await res.json();
+      if (data.ok) {
+        btn.innerHTML = '🔄 ' + data.count;
+        if (data.reposted) btn.classList.add('reposted');
+        else btn.classList.remove('reposted');
+      }
+    });
+  });
 })();
         `,
         }}
@@ -931,8 +973,8 @@ export interface PostViewProps {
 }
 
 export const PostView: FC<
-  PostViewProps & { user?: IUser; domain?: string }
-> = ({ post, user, domain }) => {
+  PostViewProps & { user?: IUser; domain?: string; isAuthed?: boolean }
+> = ({ post, user, domain, isAuthed }) => {
   // Use user and domain if provided for avatar, display name, handle
   const isRemote = post.remote;
   let displayName = user?.displayName || post.remoteAuthorName || post.author;
@@ -959,6 +1001,13 @@ export const PostView: FC<
       handle = post.author;
     }
   }
+
+  // Like/Repost logic for single post view
+  const localUser = user?.username || "";
+  const liked = post.likes && post.likes.includes(localUser);
+  const reposted = post.reposts && post.reposts.includes(localUser);
+  const likeCount = post.likes ? post.likes.length : 0;
+  const repostCount = post.reposts ? post.reposts.length : 0;
 
   return (
     <article
@@ -1032,32 +1081,37 @@ export const PostView: FC<
           >
             Permalink
           </a>
-          {/* Like, Repost, Reply buttons (UI only) */}
           <button
             type="button"
-            class="secondary"
+            class={`secondary like-btn${liked ? " liked" : ""}`}
+            data-post-id={post._id}
+            disabled={!isAuthed}
             style={{
               background: "none",
               border: "none",
-              cursor: "pointer",
-              color: "#c00",
+              cursor: isAuthed ? "pointer" : "not-allowed",
+              color: liked ? "#c00" : "#c00",
+              fontWeight: liked ? 700 : 400,
             }}
             title="Like"
           >
-            ❤️ 0
+            ❤️ {likeCount}
           </button>
           <button
             type="button"
-            class="secondary"
+            class={`secondary repost-btn${reposted ? " reposted" : ""}`}
+            data-post-id={post._id}
+            disabled={!isAuthed}
             style={{
               background: "none",
               border: "none",
-              cursor: "pointer",
-              color: "#0ac",
+              cursor: isAuthed ? "pointer" : "not-allowed",
+              color: reposted ? "#0ac" : "#0ac",
+              fontWeight: reposted ? 700 : 400,
             }}
             title="Repost"
           >
-            🔄 0
+            🔄 {repostCount}
           </button>
           <button
             type="button"
@@ -1163,7 +1217,12 @@ export const PostPage: FC<PostPageProps> = (props) => (
         </div>
       </div>
     </article>
-    <PostView post={props.post} user={props.user} domain={props.domain} />
+    <PostView
+      post={props.post}
+      user={props.user}
+      domain={props.domain}
+      isAuthed={props.isAuthed}
+    />
   </>
 );
 
