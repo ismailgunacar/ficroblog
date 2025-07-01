@@ -1,7 +1,10 @@
 import { Create, Follow, Note, Undo } from "@fedify/fedify";
 import { federation } from "@fedify/fedify/x/hono";
 import { getLogger } from "@logtape/logtape";
+import bcrypt from "bcrypt";
 import { Hono } from "hono";
+import type { Context } from "hono";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { stringifyEntities } from "stringify-entities";
 import { connectDB } from "./db.js";
 import fedi from "./federation.js";
@@ -22,6 +25,21 @@ await connectDB();
 
 const app = new Hono();
 app.use(federation(fedi, () => undefined));
+
+type AppContext = Context<{ Variables: { sessionUser?: string } }>;
+
+// Session middleware
+app.use(async (c: AppContext, next) => {
+  const session = getCookie(c, "session");
+  if (session) {
+    // For single-user, just check if session === username
+    const user = await User.findOne().exec();
+    if (user && session === user.username) {
+      c.set("sessionUser", user.username);
+    }
+  }
+  await next();
+});
 
 // Account setup
 app.get("/setup", async (c) => {
@@ -44,6 +62,8 @@ app.post("/setup", async (c) => {
   const name = form.get("name")?.toString();
   const password = form.get("password")?.toString();
   const confirmPassword = form.get("confirm_password")?.toString();
+  const avatarUrl = form.get("avatarUrl")?.toString() || "";
+  const headerUrl = form.get("headerUrl")?.toString() || "";
 
   if (
     !username ||
@@ -58,16 +78,95 @@ app.post("/setup", async (c) => {
     return c.redirect("/setup");
   }
 
-  const url = new URL(c.req.url);
-  const handle = `@${username}@${url.host}`;
+  const passwordHash = await bcrypt.hash(password, 12);
 
   await User.create({
     username,
     displayName: name,
-    // password will be hashed and stored in a future step
+    passwordHash,
+    avatarUrl,
+    headerUrl,
   });
 
   return c.redirect("/");
+});
+
+// Login endpoint
+app.post("/login", async (c: AppContext) => {
+  const { password } = await c.req.json();
+  const user = await User.findOne().exec();
+  if (!user || !password) return c.json({ ok: false });
+  const valid = await bcrypt.compare(password, user.passwordHash);
+  if (!valid) return c.json({ ok: false });
+  setCookie(c, "session", user.username, {
+    httpOnly: true,
+    path: "/",
+    sameSite: "lax",
+    secure: false,
+  });
+  return c.json({ ok: true });
+});
+
+// Logout endpoint
+app.post("/logout", async (c: AppContext) => {
+  deleteCookie(c, "session", { path: "/" });
+  return c.json({ ok: true });
+});
+
+// Session check endpoint
+app.get("/session", async (c: AppContext) => {
+  if (c.get("sessionUser")) {
+    return c.json({ loggedIn: true });
+  } else {
+    return c.json({ loggedIn: false });
+  }
+});
+
+// Profile update endpoint
+app.post("/profile", async (c: AppContext) => {
+  if (!c.get("sessionUser")) {
+    return c.json({ ok: false, error: "Unauthorized" }, 401);
+  }
+  const { displayName, bio, avatarUrl, headerUrl, username, password } =
+    await c.req.json();
+  const user = await User.findOne().exec();
+  if (!user) return c.json({ ok: false, error: "User not found" }, 404);
+  if (
+    typeof displayName !== "string" ||
+    displayName.length < 1 ||
+    displayName.length > 50
+  ) {
+    return c.json({ ok: false, error: "Invalid displayName" }, 400);
+  }
+  if (typeof bio !== "string" || bio.length > 200) {
+    return c.json({ ok: false, error: "Invalid bio" }, 400);
+  }
+  if (typeof avatarUrl !== "string" || avatarUrl.length > 300) {
+    return c.json({ ok: false, error: "Invalid avatarUrl" }, 400);
+  }
+  if (typeof headerUrl !== "string" || headerUrl.length > 300) {
+    return c.json({ ok: false, error: "Invalid headerUrl" }, 400);
+  }
+  // Username is not editable after setup for now
+  user.displayName = displayName;
+  user.bio = bio;
+  user.avatarUrl = avatarUrl;
+  user.headerUrl = headerUrl;
+  if (typeof password === "string" && password.length >= 8) {
+    user.passwordHash = await bcrypt.hash(password, 12);
+  }
+  await user.save();
+  return c.json({ ok: true });
+});
+
+// Auth-required middleware for POST routes (except /setup and /login)
+app.use("/*", async (c: AppContext, next) => {
+  if (c.req.method === "POST" && !["/setup", "/login"].includes(c.req.path)) {
+    if (!c.get("sessionUser")) {
+      return c.json({ ok: false, error: "Unauthorized" }, 401);
+    }
+  }
+  await next();
 });
 
 // Home page

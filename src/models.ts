@@ -4,11 +4,19 @@ import type { Document } from "mongoose";
 export interface IUser extends Document {
   username: string;
   displayName: string;
+  passwordHash: string;
+  bio?: string;
+  avatarUrl?: string;
+  headerUrl?: string;
 }
 
 const UserSchema = new Schema<IUser>({
   username: { type: String, required: true, unique: true },
   displayName: { type: String, required: true },
+  passwordHash: { type: String, required: true },
+  bio: { type: String, required: false, default: "" },
+  avatarUrl: { type: String, required: false, default: "" },
+  headerUrl: { type: String, required: false, default: "" },
 });
 
 export const User = model<IUser>("User", UserSchema);
