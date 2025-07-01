@@ -444,15 +444,37 @@ export const Home: FC<HomeProps> = async ({
       {allPosts.map((post) => {
         // Determine if this is a remote post and get the correct author info
         const isRemote = post.remote;
-        const displayName = isRemote
-          ? post.remoteAuthorName || post.author
-          : user.displayName;
-        const avatarUrl = isRemote
-          ? post.remoteAuthorAvatar || ""
-          : user.avatarUrl;
-        const handle = isRemote
-          ? post.author
-          : `@${user.username}@${postDomain}`;
+        let displayName = user.displayName;
+        let avatarUrl = user.avatarUrl;
+        let handle = `@${user.username}@${postDomain}`;
+
+        if (isRemote) {
+          // For remote posts, extract proper display name and handle from the author URL
+          try {
+            const url = new URL(post.author);
+            const pathParts = url.pathname.split("/").filter(Boolean);
+
+            // Extract username from path (e.g., /@username or /users/username)
+            let username = "";
+            if (pathParts.length > 0) {
+              username = pathParts[pathParts.length - 1];
+              // Remove @ prefix if present
+              if (username.startsWith("@")) {
+                username = username.substring(1);
+              }
+            }
+
+            // Use stored remote author name or fallback to username
+            displayName = post.remoteAuthorName || username || "Remote User";
+            avatarUrl = post.remoteAuthorAvatar || "";
+            handle = `@${username}@${url.hostname}`;
+          } catch (e) {
+            // Fallback if URL parsing fails
+            displayName = post.remoteAuthorName || "Remote User";
+            avatarUrl = post.remoteAuthorAvatar || "";
+            handle = post.author;
+          }
+        }
 
         return (
           <article
