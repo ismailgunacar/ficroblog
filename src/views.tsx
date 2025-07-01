@@ -38,6 +38,19 @@ export const SetupForm: FC = () => (
         <label>
           Name <input type="text" name="name" required />
         </label>
+        <label>
+          Password{" "}
+          <input type="password" name="password" required minlength={8} />
+        </label>
+        <label>
+          Confirm Password{" "}
+          <input
+            type="password"
+            name="confirm_password"
+            required
+            minlength={8}
+          />
+        </label>
       </fieldset>
       <input type="submit" value="Setup" />
     </form>
@@ -114,70 +127,103 @@ export const Home: FC<HomeProps> = async ({
   const posts = await Post.find().sort({ createdAt: -1 }).exec();
   return (
     <>
-      <hgroup>
-        <h1>{user.displayName}'s microblog</h1>
-        <p>
-          <span style={{ userSelect: "all" }}>{handle}</span> &middot;{" "}
-          <a href={`/users/${user.username}/followers`}>
-            {followers === 1 ? "1 follower" : `${followers} followers`}
-          </a>{" "}
-          &middot;{" "}
-          <a href={`/users/${user.username}/following`}>
-            {following === 1 ? "1 following" : `${following} following`}
-          </a>
-        </p>
-      </hgroup>
-      <FollowForm />
-      <form method="post" action={`/users/${user.username}/posts`}>
-        <fieldset>
-          <label>
-            <textarea name="content" required placeholder="What's up?" />
-          </label>
-        </fieldset>
-        <input type="submit" value="Post" />
-      </form>
+      {/* Top Auth Card */}
+      <article class="card" style={{ padding: "1rem", marginBottom: "1.5rem" }}>
+        {/* TODO: Replace with real auth logic */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <span>
+            You are signed in as <strong>{user.displayName}</strong>
+          </span>
+          {/* <a href="/logout">Sign out</a> */}
+        </div>
+      </article>
+
+      {/* Heading Card */}
+      <article class="card" style={{ padding: "1rem", marginBottom: "1.5rem" }}>
+        <hgroup>
+          <h1>{user.displayName}'s microblog</h1>
+          <p>
+            <span style={{ userSelect: "all" }}>{handle}</span> &middot;{" "}
+            <a href={`/users/${user.username}/followers`}>
+              {followers === 1 ? "1 follower" : `${followers} followers`}
+            </a>{" "}
+            &middot;{" "}
+            <a href={`/users/${user.username}/following`}>
+              {following === 1 ? "1 following" : `${following} following`}
+            </a>
+          </p>
+        </hgroup>
+      </article>
+
+      {/* Follow Someone Card */}
+      <article class="card" style={{ padding: "1rem", marginBottom: "1.5rem" }}>
+        <FollowForm />
+      </article>
+
+      {/* New Post Card */}
+      <article class="card" style={{ padding: "1rem", marginBottom: "1.5rem" }}>
+        <form method="post" action={`/users/${user.username}/posts`}>
+          <fieldset>
+            <label>
+              <textarea name="content" required placeholder="What's up?" />
+            </label>
+          </fieldset>
+          <input type="submit" value="Post" />
+        </form>
+      </article>
+
+      {/* Timeline Section (posts already in cards) */}
       <section>
         <h2>Timeline</h2>
-        <ul>
+        <ul style={{ listStyle: "none", padding: 0 }}>
           {posts.map((post) => (
-            <li key={post._id}>
-              <strong>
-                {post.remote && post.author.startsWith("http") ? (
-                  <a
-                    href={post.author}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {post.author}
-                  </a>
-                ) : (
-                  post.author
-                )}
-              </strong>
-              <div dangerouslySetInnerHTML={{ __html: post.content }} />
-              <div
-                style={{
-                  fontSize: "0.9em",
-                  color: "#666",
-                  marginTop: "0.5rem",
-                }}
-              >
-                <time dateTime={new Date(post.createdAt).toISOString()}>
-                  {new Date(post.createdAt).toLocaleString()}
-                </time>
-                {!post.remote && (
-                  <>
-                    {" "}
-                    &middot;{" "}
+            <li key={post._id} style={{ marginBottom: "1.5rem" }}>
+              <article class="card" style={{ padding: "1rem" }}>
+                <strong>
+                  {post.remote && post.author.startsWith("http") ? (
                     <a
-                      href={`/users/${post.author}/posts/${post._id}`}
-                      class="secondary"
+                      href={post.author}
+                      target="_blank"
+                      rel="noopener noreferrer"
                     >
-                      permalink
+                      {post.author}
                     </a>
-                  </>
-                )}
-              </div>
+                  ) : (
+                    post.author
+                  )}
+                </strong>
+                {/* biome-ignore lint/security/noDangerouslySetInnerHtml: Post content is sanitized */}
+                <div dangerouslySetInnerHTML={{ __html: post.content }} />
+                <div
+                  style={{
+                    fontSize: "0.9em",
+                    color: "#666",
+                    marginTop: "0.5rem",
+                  }}
+                >
+                  <time dateTime={new Date(post.createdAt).toISOString()}>
+                    {new Date(post.createdAt).toLocaleString()}
+                  </time>
+                  {!post.remote && (
+                    <>
+                      {" "}
+                      &middot;{" "}
+                      <a
+                        href={`/users/${post.author}/posts/${post._id}`}
+                        class="secondary"
+                      >
+                        permalink
+                      </a>
+                    </>
+                  )}
+                </div>
+              </article>
             </li>
           ))}
         </ul>
@@ -191,15 +237,15 @@ export interface PostViewProps {
 }
 
 export const PostView: FC<PostViewProps> = ({ post }) => (
-  <article>
+  <article class="card" style={{ padding: "1rem" }}>
     <header>
       <strong>{post.author}</strong>
     </header>
-    {/* biome-ignore lint/security/noDangerouslySetInnerHtml: Post content is HTML */}
+    {/* biome-ignore lint/security/noDangerouslySetInnerHtml: Post content is sanitized */}
     <div dangerouslySetInnerHTML={{ __html: post.content }} />
     <footer>
-      <time datetime={new Date(post.createdAt).toISOString()}>
-        {post.createdAt}
+      <time dateTime={new Date(post.createdAt).toISOString()}>
+        {new Date(post.createdAt).toLocaleString()}
       </time>
     </footer>
   </article>

@@ -1,8 +1,10 @@
 # Fedify Microblog Tutorial Checklist (MongoDB Atlas Version)
 
-This will be a single-user federated microblog. At first we want to follow the tutorial at https://fedify.dev/tutorial/microblog, adapting to MongoDB Atlas. Then we will add a seamless authentication and /@username support for user pages.
+This is a **single-user, self-hosted federated microblog**. The goal is to follow the [Fedify microblog tutorial](https://fedify.dev/tutorial/microblog) and documentation as closely as possible, adapting to MongoDB Atlas for persistence. We also look to [Hollo](https://github.com/fedify-dev/hollo) for best practices and conventions, as it is the reference single-user Fedify microblog.
 
-Make sure to write concise, modular code. 
+> **Note:** This project will **never** support multiple users or accounts. All endpoints, federation, and authentication are for a single user only.
+
+Make sure to write concise, modular code.
 
 ## Project Setup ✅
 - [x] Initialize Fedify project with `fedify init`
@@ -19,7 +21,7 @@ Make sure to write concise, modular code.
 
 ## Federation Foundation ✅
 - [x] Set up basic federation with `createFederation()`
-- [x] Configure actor dispatcher for `/users/{identifier}`
+- [x] Configure actor dispatcher for `/users/{identifier}` (single user)
 - [x] Set up inbox listeners for `/users/{identifier}/inbox`
 - [x] Configure shared inbox at `/inbox`
 
@@ -42,7 +44,7 @@ Make sure to write concise, modular code.
 
 ## Web Interface - Account Setup ✅
 - [x] Create account setup page (`/setup`)
-- [x] Implement account creation form
+- [x] Implement account creation form (single user)
 - [x] Create user record in MongoDB
 - [x] Redirect to home page after setup
 
@@ -62,7 +64,7 @@ Make sure to write concise, modular code.
 - [x] Create post detail pages (`/users/{username}/posts/{id}`)
 
 ## Following Other Users ✅
-- [x] Implement `Follow` activity sending
+- [x] Implement `Follow` activity sending (single user follows others)
 - [x] Store following relationships in MongoDB
 - [x] Create following list page
 - [x] Handle incoming posts from followed users
@@ -89,13 +91,43 @@ Make sure to write concise, modular code.
 - [x] Add proper error responses
 - [x] Add logging for debugging
 
+---
+
+## Fedify & Hollo Best Practices
+- Follow [Fedify microblog tutorial](https://fedify.dev/tutorial/microblog) for endpoint structure, dispatcher logic, and ActivityPub handling.
+- Reference [Hollo](https://github.com/fedify-dev/hollo) for:
+  - Security defaults (strong secrets, session/OAuth2, PKCE, etc.)
+  - Mastodon-compatible APIs (optional, for client integration)
+  - Minimal, standards-compliant backend
+  - Node.js 24+ and up-to-date dependencies
+  - Privacy features (e.g., EXIF stripping for uploads)
+  - No web UI required (Hollo is headless), but a minimal UI is fine
+
+---
+
+## Authentication (Single User)
+- [ ] Implement seamless authentication for the single user
+  - [ ] Simple session-based login (recommended for web UI)
+  - [ ] Or OAuth2 (with PKCE, metadata, etc.) for API/Mastodon client compatibility (see Hollo)
+  - [ ] Strong `SECRET_KEY` (44+ chars, as in Hollo)
+  - [ ] No registration, password reset, or multi-user logic
+  - [ ] Admin interface is local-only or protected
+
+## Optional: Mastodon-Compatible APIs
+- [ ] (Optional) Implement Mastodon-compatible APIs for use with Mastodon clients (see Hollo)
+- [ ] Expose public API endpoints as needed
+
 ## Production Readiness
-- [ ] Replace in-memory stores with persistent ones
-- [ ] Add proper authentication (future enhancement)
+- [ ] Replace in-memory stores with persistent ones (MongoDB Atlas)
+- [ ] Add proper authentication (see above)
 - [ ] Add rate limiting
 - [ ] Add input validation
 - [ ] Add proper HTTP status codes
-- [ ] Add security headers
+- [ ] Add security headers (CORS, CSRF, etc.)
+- [ ] Use `x-forwarded-fetch` middleware if behind a proxy/tunnel
+- [ ] Use strong secrets for session/OAuth
+- [ ] Node.js 24+ required
+- [ ] Privacy: EXIF stripping for uploads (if media is supported)
 
 ## Current Status: ✅ Complete Basic Federation
 **Next Step:** Production deployment and authentication
@@ -104,7 +136,7 @@ Make sure to write concise, modular code.
 - Using MongoDB Atlas for data persistence (users, posts, follows)
 - Using in-memory key storage for federation (like tutorial)
 - Following Fedify tutorial conventions and structure
-- Single-user microblog as specified
+- **Single-user microblog as specified**
 - Modular code structure maintained
 - Ready for seamless auth and @username endpoints later
 - Fixed URL consistency issues (all HTTPS)

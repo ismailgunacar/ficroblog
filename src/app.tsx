@@ -42,8 +42,19 @@ app.post("/setup", async (c) => {
   const form = await c.req.formData();
   const username = form.get("username")?.toString();
   const name = form.get("name")?.toString();
+  const password = form.get("password")?.toString();
+  const confirmPassword = form.get("confirm_password")?.toString();
 
-  if (!username || !name || !username.match(/^[a-z0-9_-]{1,50}$/)) {
+  if (
+    !username ||
+    !name ||
+    !username.match(/^[a-z0-9_-]{1,50}$/) ||
+    !password ||
+    !confirmPassword ||
+    password.length < 8 ||
+    confirmPassword.length < 8 ||
+    password !== confirmPassword
+  ) {
     return c.redirect("/setup");
   }
 
@@ -53,6 +64,7 @@ app.post("/setup", async (c) => {
   await User.create({
     username,
     displayName: name,
+    // password will be hashed and stored in a future step
   });
 
   return c.redirect("/");
@@ -121,9 +133,7 @@ app.post("/follow", async (c) => {
 
   // Send Follow activity
   const ctx = fedi.createContext(c.req.raw, undefined);
-  const publicUrl = c.req.header("host")?.includes("localhost")
-    ? "https://d86c19a367b63a.lhr.life"
-    : `https://${c.req.header("host")}`;
+  const publicUrl = `https://${c.req.header("host")}`;
 
   await ctx.sendActivity(
     { identifier: user.username },
@@ -173,9 +183,7 @@ app.post("/unfollow", async (c) => {
 
   // Send Undo(Follow) activity
   const ctx = fedi.createContext(c.req.raw, undefined);
-  const publicUrl = c.req.header("host")?.includes("localhost")
-    ? "https://d86c19a367b63a.lhr.life"
-    : `https://${c.req.header("host")}`;
+  const publicUrl = `https://${c.req.header("host")}`;
 
   await ctx.sendActivity(
     { identifier: user.username },
@@ -243,9 +251,7 @@ app.post("/users/:username/posts", async (c) => {
 
   // Send Create activity to followers
   const ctx = fedi.createContext(c.req.raw, undefined);
-  const publicUrl = c.req.header("host")?.includes("localhost")
-    ? "https://d86c19a367b63a.lhr.life"
-    : `https://${c.req.header("host")}`;
+  const publicUrl = `https://${c.req.header("host")}`;
 
   const note = new Note({
     id: new URL(`/users/${username}/posts/${post._id}`, publicUrl),
@@ -254,17 +260,15 @@ app.post("/users/:username/posts", async (c) => {
     mediaType: "text/html",
     to: new URL("https://www.w3.org/ns/activitystreams#Public"),
   });
-
   logger.info(`Sending Create activity to followers for post ${post._id}`);
   logger.info(`Note ID: ${note.id?.href}`);
   logger.info(`Actor: ${publicUrl}/users/${username}`);
 
   // Check if we have any followers first
-  const followers = await FollowModel.find({
-    following: `${publicUrl}/users/${username}`,
+  const followers: any[] = await FollowModel.find({
+    following: publicUrl + "/users/" + username,
   }).exec();
-  logger.info(`Found ${followers.length} followers for ${username}`);
-
+  logger.info(`Followers: ${followers.map((f) => f.follower).join(", ")}`);
   if (followers.length === 0) {
     logger.info(`No followers found, skipping delivery`);
   } else {
