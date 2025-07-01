@@ -280,6 +280,49 @@ federation
     // For now, just log the deletion. You could add cleanup logic here if desired.
     // Respond with 202 Accepted
     return ctx.res?.status(202);
+  })
+  .on("Like", async (ctx, activity) => {
+    // Handle plain-object Like activities
+    const objectId = activity.object;
+    const actor = activity.actor;
+    if (!objectId || !actor) return;
+    const post = await Post.findOne({ objectId }).exec();
+    if (!post) return;
+    if (!post.likes) post.likes = [];
+    if (!post.likes.includes(actor)) {
+      post.likes.push(actor);
+      await post.save();
+    }
+  })
+  .on("Announce", async (ctx, activity) => {
+    // Handle plain-object Announce (repost) activities
+    const objectId = activity.object;
+    const actor = activity.actor;
+    if (!objectId || !actor) return;
+    const post = await Post.findOne({ objectId }).exec();
+    if (!post) return;
+    if (!post.reposts) post.reposts = [];
+    if (!post.reposts.includes(actor)) {
+      post.reposts.push(actor);
+      await post.save();
+    }
+  })
+  .on("Undo", async (ctx, activity) => {
+    // Handle plain-object Undo for Like or Announce
+    const obj = activity.object;
+    if (!obj) return;
+    const objectId = obj.object;
+    const actor = obj.actor;
+    if (!objectId || !actor) return;
+    const post = await Post.findOne({ objectId }).exec();
+    if (!post) return;
+    if (obj.type === "Like" && post.likes) {
+      post.likes = post.likes.filter((a) => a !== actor);
+      await post.save();
+    } else if (obj.type === "Announce" && post.reposts) {
+      post.reposts = post.reposts.filter((a) => a !== actor);
+      await post.save();
+    }
   });
 
 // Expose followers collection for ActivityPub
