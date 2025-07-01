@@ -56,7 +56,7 @@ app.get("/@*", async (c) => {
         following={followingCount}
         posts={posts}
         isProfilePage={true}
-        domain={domain}
+        {...(domain ? { domain } : {})}
       />
     </Layout>,
   );
@@ -218,6 +218,7 @@ app.get("/", async (c) => {
   });
   const url = new URL(c.req.url);
   const handle = `@${user.username}@${url.host}`;
+  const domain = c.req.header("host");
 
   return c.html(
     <Layout>
@@ -226,6 +227,7 @@ app.get("/", async (c) => {
         handle={handle}
         followers={followers}
         following={followingCount}
+        {...(domain ? { domain } : {})}
       />
     </Layout>,
   );
@@ -354,6 +356,7 @@ app.get("/users/:username", async (c) => {
 
   const url = new URL(c.req.url);
   const handle = `@${username}@${url.host}`;
+  const domain = c.req.header("host");
 
   // Fetch this user's posts
   const posts = await Post.find({ author: username })
@@ -369,6 +372,7 @@ app.get("/users/:username", async (c) => {
         following={followingCount}
         posts={posts}
         isProfilePage={true}
+        {...(domain ? { domain } : {})}
       />
     </Layout>,
   );
