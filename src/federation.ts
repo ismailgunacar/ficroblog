@@ -184,9 +184,6 @@ federation
       return;
     }
 
-    logger.info(`Create activity object type: ${object.type}`);
-    logger.info(`Create activity object: ${JSON.stringify(object, null, 2)}`);
-
     // Check if it's a Note (post) - handle both direct type and object structure
     const isNote = object.type === "Note" || object.constructor.name === "Note";
 
