@@ -2,6 +2,7 @@ import {
   Accept,
   type Context,
   Create,
+  Delete,
   Endpoints,
   Follow as FediFollow,
   Note,
@@ -234,6 +235,18 @@ federation
         `Missing author or content for remote post. Author: ${author}, Content: ${content ? "present" : "missing"}`,
       );
     }
+  })
+  .on(Delete, async (ctx, del) => {
+    logger.info(
+      `Received Delete activity: ${del.id?.href || del.id || "unknown"}`,
+    );
+    logger.info(`Delete actor: ${del.actorId?.href || del.actor || "unknown"}`);
+    logger.info(
+      `Delete object: ${del.objectId?.href || del.object || "unknown"}`,
+    );
+    // For now, just log the deletion. You could add cleanup logic here if desired.
+    // Respond with 202 Accepted
+    return ctx.res?.status(202);
   });
 
 // Expose followers collection for ActivityPub
