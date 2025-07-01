@@ -5,6 +5,7 @@ import {
   Delete,
   Endpoints,
   Follow as FediFollow,
+  Image,
   Note,
   PUBLIC_COLLECTION,
   Person,
@@ -37,11 +38,13 @@ const federation = createFederation({
 federation
   .setActorDispatcher("/users/{identifier}", async (ctx, identifier) => {
     const keys = await ctx.getActorKeyPairs(identifier);
+    // Fetch user from DB to get bio, avatar, header
+    const user = await User.findOne({ username: identifier }).exec();
 
     const actor = new Person({
       id: ctx.getActorUri(identifier),
       preferredUsername: identifier,
-      name: identifier,
+      name: user?.displayName || identifier,
       followers: ctx.getFollowersUri(identifier),
       following: ctx.getFollowingUri(identifier),
       inbox: ctx.getInboxUri(identifier),
@@ -51,6 +54,9 @@ federation
       }),
       publicKey: keys[0]?.cryptographicKey,
       assertionMethods: keys.map((k) => k.multikey),
+      summary: user?.bio || undefined,
+      icon: user?.avatarUrl ? new Image({ url: user.avatarUrl }) : undefined,
+      image: user?.headerUrl ? new Image({ url: user.headerUrl }) : undefined,
     });
 
     return actor;
