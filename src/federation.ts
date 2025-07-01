@@ -35,9 +35,7 @@ const federation = createFederation({
 
 federation
   .setActorDispatcher("/users/{identifier}", async (ctx, identifier) => {
-    logger.info(`Actor dispatcher called for identifier: ${identifier}`);
     const keys = await ctx.getActorKeyPairs(identifier);
-    logger.info(`Loaded ${keys.length} keys for ${identifier}`);
 
     const actor = new Person({
       id: ctx.getActorUri(identifier),
@@ -54,7 +52,6 @@ federation
       assertionMethods: keys.map((k) => k.multikey),
     });
 
-    logger.info(`Created actor: ${actor.id?.href || "unknown"}`);
     return actor;
   })
   .setKeyPairsDispatcher(async (ctx: Context<unknown>, identifier: string) => {
@@ -67,15 +64,14 @@ federation
       return cachedKeys;
     }
 
-    // Generate both RSA and Ed25519 keys in memory
+    // Generate only one key type for better performance
     logger.info(`Generating new keys for ${identifier}`);
     const rsaKeys = await generateCryptoKeyPair("RSASSA-PKCS1-v1_5");
-    const ed25519Keys = await generateCryptoKeyPair("Ed25519");
 
-    const keys = [rsaKeys, ed25519Keys];
+    const keys = [rsaKeys];
     keyCache.set(identifier, keys);
 
-    logger.info(`Generated and cached keys for ${identifier}: RSA and Ed25519`);
+    logger.info(`Generated and cached keys for ${identifier}: RSA only`);
 
     return keys;
   });
@@ -245,22 +241,14 @@ federation
     "/users/{identifier}/followers",
     async (ctx, identifier, cursor) => {
       const following = ctx.getActorUri(identifier).href;
-      logger.info(
-        `Followers dispatcher called for ${identifier}, following: ${following}`,
-      );
 
       const docs = await Follow.find({ following })
         .sort({ createdAt: -1 })
         .exec();
 
-      logger.info(`Found ${docs.length} followers for ${identifier}`);
-
       const items: Recipient[] = docs.map(
         (f: import("./models.js").IFollow) => {
-          logger.info(`Adding follower: ${f.follower}`);
-          // Try to construct the inbox URL
           const inboxUrl = `${f.follower}/inbox`;
-          logger.info(`Constructed inbox URL: ${inboxUrl}`);
           return {
             id: new URL(f.follower),
             inboxId: new URL(inboxUrl),
@@ -268,7 +256,6 @@ federation
         },
       );
 
-      logger.info(`Returning ${items.length} followers for ${identifier}`);
       return { items };
     },
   )
@@ -324,17 +311,12 @@ federation.setObjectDispatcher(
 federation.setOutboxDispatcher(
   "/users/{identifier}/outbox",
   async (ctx, identifier, cursor) => {
-    logger.info(`Outbox dispatcher called for ${identifier}`);
-
     const posts = await Post.find({ author: identifier })
       .sort({ createdAt: -1 })
       .limit(20)
       .exec();
 
-    logger.info(`Found ${posts.length} posts for outbox`);
-
     const activities = posts.map((post) => {
-      logger.info(`Creating activity for post ${post._id}`);
       return new Create({
         id: new URL(`#create-${post._id}`, ctx.getActorUri(identifier).href),
         actor: ctx.getActorUri(identifier),
@@ -350,7 +332,6 @@ federation.setOutboxDispatcher(
       });
     });
 
-    logger.info(`Returning ${activities.length} activities for outbox`);
     return { items: activities };
   },
 );
