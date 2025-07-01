@@ -1,4 +1,4 @@
-import { Create, Follow, Note, Undo } from "@fedify/fedify";
+import { Announce, Create, Follow, Like, Note, Undo } from "@fedify/fedify";
 import { federation } from "@fedify/fedify/x/hono";
 import { getLogger } from "@logtape/logtape";
 import bcrypt from "bcrypt";
@@ -583,26 +583,26 @@ app.post("/like", async (c) => {
       await ctx.sendActivity(
         { identifier: user.username },
         { id: new URL(post.author), inboxId: new URL(inbox) },
-        {
-          "@context": "https://www.w3.org/ns/activitystreams",
-          type: "Like",
+        new Like({
           id: new URL(`#like-${Date.now()}`, actorUrl),
           actor: actorUrl,
           object: targetObject,
-        },
+        }),
       );
     } else {
       logger.error(`Could not fetch inbox for remote actor: ${post.author}`);
     }
   } else if (!post.remote) {
     // Local post: federate Like to followers
-    await ctx.sendActivity({ identifier: user.username }, "followers", {
-      "@context": "https://www.w3.org/ns/activitystreams",
-      type: "Like",
-      id: new URL(`#like-${Date.now()}`, actorUrl),
-      actor: actorUrl,
-      object: targetObject,
-    });
+    await ctx.sendActivity(
+      { identifier: user.username },
+      "followers",
+      new Like({
+        id: new URL(`#like-${Date.now()}`, actorUrl),
+        actor: actorUrl,
+        object: targetObject,
+      }),
+    );
   }
   return c.redirect(c.req.header("referer") || "/");
 });
@@ -636,26 +636,26 @@ app.post("/repost", async (c) => {
       await ctx.sendActivity(
         { identifier: user.username },
         { id: new URL(post.author), inboxId: new URL(inbox) },
-        {
-          "@context": "https://www.w3.org/ns/activitystreams",
-          type: "Announce",
+        new Announce({
           id: new URL(`#announce-${Date.now()}`, actorUrl),
           actor: actorUrl,
           object: targetObject,
-        },
+        }),
       );
     } else {
       logger.error(`Could not fetch inbox for remote actor: ${post.author}`);
     }
   } else if (!post.remote) {
     // Local post: federate Announce to followers
-    await ctx.sendActivity({ identifier: user.username }, "followers", {
-      "@context": "https://www.w3.org/ns/activitystreams",
-      type: "Announce",
-      id: new URL(`#announce-${Date.now()}`, actorUrl),
-      actor: actorUrl,
-      object: targetObject,
-    });
+    await ctx.sendActivity(
+      { identifier: user.username },
+      "followers",
+      new Announce({
+        id: new URL(`#announce-${Date.now()}`, actorUrl),
+        actor: actorUrl,
+        object: targetObject,
+      }),
+    );
   }
   return c.redirect(c.req.header("referer") || "/");
 });
