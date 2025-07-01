@@ -38,49 +38,46 @@ export const Layout: FC = (props) => (
     </head>
     <body>
       <main class="container">{props.children}</main>
-      <script>
-      (function() {
-        // Like/repost AJAX handler
-        function handleAjaxForm(formClass, iconSelector, countSelector, userListSelector, type) {
-          document.querySelectorAll(formClass).forEach(form => {
-            form.addEventListener('submit', async function(e) {
-              e.preventDefault();
-              const btn = form.querySelector('button[type="submit"]');
-              if (btn) btn.disabled = true;
-              const res = await fetch(form.action, {
-                method: 'POST',
-                body: new FormData(form),
-              });
-              if (btn) btn.disabled = false;
-              if (res.ok) {
-                // Optionally, get updated post data from the server
-                // For now, just update the count and icon optimistically
-                // Find the parent post element
-                const postElem = form.closest('.card');
-                if (!postElem) return;
-                // Update count and icon
-                const btn = form.querySelector('button[type="submit"]');
-                if (btn) {
-                  // Toggle icon and count
-                  let count = parseInt(btn.textContent.match(/\d+/)?.[0] || '0', 10);
-                  const liked = btn.classList.toggle('active');
-                  if (liked) {
-                    count++;
-                    btn.innerHTML = (type === 'like' ? '❤️ ' : '🔄 ') + count;
-                  } else {
-                    count = Math.max(0, count - 1);
-                    btn.innerHTML = (type === 'like' ? '🤍 ' : '🔁 ') + count;
-                  }
-                }
-                // Optionally, update user list (requires more logic)
-              }
-            });
-          });
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+(function() {
+  function handleAjaxForm(formClass, iconSelector, countSelector, userListSelector, type) {
+    document.querySelectorAll(formClass).forEach(function(form) {
+      form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const btn = form.querySelector('button[type="submit"]');
+        if (btn) btn.disabled = true;
+        const res = await fetch(form.action, {
+          method: 'POST',
+          body: new FormData(form),
+        });
+        if (btn) btn.disabled = false;
+        if (res.ok) {
+          const postElem = form.closest('.card');
+          if (!postElem) return;
+          const btn = form.querySelector('button[type="submit"]');
+          if (btn) {
+            let count = Number.parseInt(btn.textContent.match(/\d+/)?.[0] || '0', 10);
+            const liked = btn.classList.toggle('active');
+            if (liked) {
+              count++;
+              btn.innerHTML = (type === 'like' ? '❤️ ' : '🔄 ') + count;
+            } else {
+              count = Math.max(0, count - 1);
+              btn.innerHTML = (type === 'like' ? '🤍 ' : '🔁 ') + count;
+            }
+          }
         }
-        handleAjaxForm('.like-form', '.like-btn', '.like-count', '.like-users', 'like');
-        handleAjaxForm('.repost-form', '.repost-btn', '.repost-count', '.repost-users', 'repost');
-      })();
-      </script>
+      });
+    });
+  }
+  handleAjaxForm('.like-form', '.like-btn', '.like-count', '.like-users', 'like');
+  handleAjaxForm('.repost-form', '.repost-btn', '.repost-count', '.repost-users', 'repost');
+})();
+        `,
+        }}
+      />
     </body>
   </html>
 );
@@ -934,7 +931,12 @@ export const PostView: FC<
           }}
         >
           {/* Like, Repost, Reply buttons (UI only) */}
-          <form method="post" action="/like" className="like-form" style={{ display: "inline" }}>
+          <form
+            method="post"
+            action="/like"
+            className="like-form"
+            style={{ display: "inline" }}
+          >
             <input type="hidden" name="postId" value={String(post._id)} />
             {post.remote && post.objectId && (
               <input
@@ -961,7 +963,12 @@ export const PostView: FC<
               {post.likes?.length || 0}
             </button>
           </form>
-          <form method="post" action="/repost" className="repost-form" style={{ display: "inline" }}>
+          <form
+            method="post"
+            action="/repost"
+            className="repost-form"
+            style={{ display: "inline" }}
+          >
             <input type="hidden" name="postId" value={String(post._id)} />
             {post.remote && post.objectId && (
               <input
