@@ -38,46 +38,6 @@ export const Layout: FC = (props) => (
     </head>
     <body>
       <main class="container">{props.children}</main>
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `
-(function() {
-  function handleAjaxForm(formClass, iconSelector, countSelector, userListSelector, type) {
-    document.querySelectorAll(formClass).forEach(function(form) {
-      form.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const btn = form.querySelector('button[type="submit"]');
-        if (btn) btn.disabled = true;
-        const res = await fetch(form.action, {
-          method: 'POST',
-          body: new FormData(form),
-        });
-        if (btn) btn.disabled = false;
-        if (res.ok) {
-          const postElem = form.closest('.card');
-          if (!postElem) return;
-          const btn = form.querySelector('button[type="submit"]');
-          if (btn) {
-            let count = Number.parseInt(btn.textContent.match(/\d+/)?.[0] || '0', 10);
-            const liked = btn.classList.toggle('active');
-            if (liked) {
-              count++;
-              btn.innerHTML = (type === 'like' ? '❤️ ' : '🔄 ') + count;
-            } else {
-              count = Math.max(0, count - 1);
-              btn.innerHTML = (type === 'like' ? '🤍 ' : '🔁 ') + count;
-            }
-          }
-        }
-      });
-    });
-  }
-  handleAjaxForm('.like-form', '.like-btn', '.like-count', '.like-users', 'like');
-  handleAjaxForm('.repost-form', '.repost-btn', '.repost-count', '.repost-users', 'repost');
-})();
-        `,
-        }}
-      />
     </body>
   </html>
 );
@@ -182,8 +142,6 @@ export interface HomeProps {
   posts?: IPost[];
   isProfilePage?: boolean;
   domain?: string;
-  currentUserUrl?: string;
-  currentDomain?: string;
 }
 
 export const Home: FC<HomeProps> = async ({
@@ -194,14 +152,7 @@ export const Home: FC<HomeProps> = async ({
   posts,
   isProfilePage,
   domain,
-  currentUserUrl,
-  currentDomain,
 }) => {
-  const safeDomain =
-    domain || (typeof window !== "undefined" ? window.location.host : "");
-  const safeUserUrl = user
-    ? `https://${safeDomain}/users/${user.username}`
-    : "";
   // If posts are provided (profile page), use them; otherwise fetch all
   const allPosts = posts ?? (await Post.find().sort({ createdAt: -1 }).exec());
   const postDomain = domain;
@@ -525,14 +476,127 @@ export const Home: FC<HomeProps> = async ({
         }
 
         return (
-          <PostView
+          <article
             key={post._id}
-            post={post}
-            user={user}
-            domain={domain}
-            currentUserUrl={safeUserUrl}
-            currentDomain={safeDomain}
-          />
+            class="card"
+            style={{
+              display: "flex",
+              gap: "1rem",
+              alignItems: "flex-start",
+              padding: "1.5rem",
+              marginBottom: "1.5rem",
+            }}
+          >
+            {/* Avatar */}
+            <div style={{ flex: "0 0 48px" }}>
+              <img
+                src={avatarUrl || ""}
+                alt="Avatar"
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                  background: "#eee",
+                }}
+              />
+            </div>
+            {/* Post content and meta */}
+            <div style={{ flex: 1 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <div>
+                  <span style={{ fontWeight: 600 }}>{displayName}</span>
+                  <br />
+                  <span style={{ color: "#888", fontSize: "0.95em" }}>
+                    {handle}
+                  </span>
+                </div>
+                <time
+                  dateTime={new Date(post.createdAt).toISOString()}
+                  style={{ color: "#888", fontSize: "0.95em" }}
+                >
+                  {new Date(post.createdAt).toLocaleString()}
+                </time>
+              </div>
+              {/* biome-ignore lint/security/noDangerouslySetInnerHtml: Post content is sanitized */}
+              <div
+                style={{ margin: "0.75em 0" }}
+                dangerouslySetInnerHTML={{ __html: post.content }}
+              />
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "1.5em",
+                  fontSize: "0.98em",
+                  color: "#666",
+                }}
+              >
+                <a
+                  href={
+                    isRemote
+                      ? post.objectId || post.author
+                      : `/users/${post.author}/posts/${post._id}`
+                  }
+                  class="secondary"
+                  target={isRemote ? "_blank" : undefined}
+                  rel={isRemote ? "noopener noreferrer" : undefined}
+                >
+                  Permalink
+                </a>
+                {/* Like, Repost, Reply buttons (UI only) */}
+                <button
+                  type="button"
+                  class="secondary"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "#c00",
+                  }}
+                  title="Like"
+                >
+                  ❤️ 0
+                </button>
+                <button
+                  type="button"
+                  class="secondary"
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "#0ac",
+                  }}
+                  title="Repost"
+                >
+                  🔄 0
+                </button>
+                <button
+                  type="button"
+                  class="secondary reply-btn"
+                  data-post-id={post._id}
+                  data-post-content={post.content}
+                  data-post-author={displayName}
+                  data-post-handle={handle}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "#888",
+                  }}
+                  title="Reply"
+                >
+                  💬 0
+                </button>
+              </div>
+            </div>
+          </article>
         );
       })}
 
@@ -857,13 +921,11 @@ export const Home: FC<HomeProps> = async ({
 
 export interface PostViewProps {
   post: IPost;
-  currentUserUrl?: string;
-  currentDomain?: string;
 }
 
 export const PostView: FC<
   PostViewProps & { user?: IUser; domain?: string }
-> = ({ post, user, domain, currentUserUrl, currentDomain }) => {
+> = ({ post, user, domain }) => {
   // Use user and domain if provided for avatar, display name, handle
   return (
     <article
@@ -931,101 +993,32 @@ export const PostView: FC<
           }}
         >
           {/* Like, Repost, Reply buttons (UI only) */}
-          <form
-            method="post"
-            action="/like"
-            className="like-form"
-            style={{ display: "inline" }}
+          <button
+            type="button"
+            class="secondary"
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "#c00",
+            }}
+            title="Like"
           >
-            <input type="hidden" name="postId" value={String(post._id)} />
-            {post.remote && post.objectId && (
-              <input
-                type="hidden"
-                name="objectId"
-                value={String(post.objectId)}
-              />
-            )}
-            <button
-              type="submit"
-              className="like-btn secondary"
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                color: post.likes?.includes(currentUserUrl) ? "#c00" : "#888",
-                fontWeight: post.likes?.includes(currentUserUrl)
-                  ? "bold"
-                  : "normal",
-              }}
-              title={post.likes?.includes(currentUserUrl) ? "Unlike" : "Like"}
-            >
-              {post.likes?.includes(currentUserUrl) ? "❤️" : "🤍"}{" "}
-              {post.likes?.length || 0}
-            </button>
-          </form>
-          <form
-            method="post"
-            action="/repost"
-            className="repost-form"
-            style={{ display: "inline" }}
+            ❤️ 0
+          </button>
+          <button
+            type="button"
+            class="secondary"
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "#0ac",
+            }}
+            title="Repost"
           >
-            <input type="hidden" name="postId" value={String(post._id)} />
-            {post.remote && post.objectId && (
-              <input
-                type="hidden"
-                name="objectId"
-                value={String(post.objectId)}
-              />
-            )}
-            <button
-              type="submit"
-              className="repost-btn secondary"
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                color: post.reposts?.includes(currentUserUrl) ? "#0ac" : "#888",
-                fontWeight: post.reposts?.includes(currentUserUrl)
-                  ? "bold"
-                  : "normal",
-              }}
-              title={
-                post.reposts?.includes(currentUserUrl)
-                  ? "Undo Repost"
-                  : "Repost"
-              }
-            >
-              {post.reposts?.includes(currentUserUrl) ? "🔄" : "🔁"}{" "}
-              {post.reposts?.length || 0}
-            </button>
-          </form>
-          {/* Like/Repost user lists */}
-          <div
-            style={{ fontSize: "0.92em", color: "#888", marginTop: "0.25em" }}
-          >
-            {post.likes?.length > 0 && (
-              <div>
-                <span>Liked by: </span>
-                {post.likes.map((actor, i) => (
-                  <span key={actor}>
-                    {i > 0 && ", "}
-                    {renderActorHandle(actor, currentDomain)}
-                  </span>
-                ))}
-              </div>
-            )}
-            {post.reposts?.length > 0 && (
-              <div>
-                <span>Reposted by: </span>
-                {post.reposts.map((actor, i) => (
-                  <span key={actor}>
-                    {i > 0 && ", "}
-                    {renderActorHandle(actor, currentDomain)}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+            🔄 0
+          </button>
           <button
             type="button"
             class="secondary reply-btn"
@@ -1052,105 +1045,87 @@ export const PostView: FC<
 export interface PostPageProps extends ProfileProps, PostViewProps {
   user?: IUser;
   domain?: string;
-  currentUserUrl?: string;
-  currentDomain?: string;
 }
 
-export const PostPage: FC<PostPageProps> = (props) => {
-  const safeDomain =
-    props.domain || (typeof window !== "undefined" ? window.location.host : "");
-  const safeUserUrl = props.user
-    ? `https://${safeDomain}/users/${props.user.username}`
-    : "";
-  return (
-    <>
-      <article class="card">
-        <div id="profile-view">
-          {props.user?.headerUrl && (
-            <div
-              style={{
-                margin: "-1.5rem -1.5rem 1rem -1.5rem",
-              }}
-            >
-              <img
-                src={props.user.headerUrl}
-                alt="Header"
-                style={{
-                  width: "100%",
-                  maxHeight: "280px",
-                  objectFit: "cover",
-                  borderRadius: "0.5rem 0.5rem 0 0",
-                }}
-              />
-            </div>
-          )}
+export const PostPage: FC<PostPageProps> = (props) => (
+  <>
+    <article class="card">
+      <div id="profile-view">
+        {props.user?.headerUrl && (
           <div
             style={{
-              display: "flex",
-              gap: "1rem",
-              marginBottom: "1rem",
+              margin: "-1.5rem -1.5rem 1rem -1.5rem",
             }}
           >
-            {props.user?.avatarUrl && (
-              <img
-                src={props.user.avatarUrl}
-                alt="Avatar"
-                style={{
-                  width: "64px",
-                  height: "64px",
-                  borderRadius: "50%",
-                  objectFit: "cover",
-                }}
-              />
-            )}
-            <div>
-              <h1 id="profile-displayName">
-                <a href="/">{props.user?.displayName || props.name}</a>
-              </h1>
-              <p>
-                <a
-                  href={`/@${props.user?.username || props.username}`}
-                  style={{ userSelect: "all" }}
-                >
-                  {props.handle}
-                </a>{" "}
-                &middot;{" "}
-                <a
-                  href={`/users/${props.user?.username || props.username}/followers`}
-                >
-                  {props.followers === 1
-                    ? "1 follower"
-                    : `${props.followers} followers`}
-                </a>{" "}
-                &middot;{" "}
-                <a
-                  href={`/users/${props.user?.username || props.username}/following`}
-                >
-                  {props.following === 1
-                    ? "1 following"
-                    : `${props.following} following`}
-                </a>
-              </p>
-              <p
-                id="profile-bio"
-                style={{ marginTop: "0.5rem", color: "#666" }}
+            <img
+              src={props.user.headerUrl}
+              alt="Header"
+              style={{
+                width: "100%",
+                maxHeight: "280px",
+                objectFit: "cover",
+                borderRadius: "0.5rem 0.5rem 0 0",
+              }}
+            />
+          </div>
+        )}
+        <div
+          style={{
+            display: "flex",
+            gap: "1rem",
+            marginBottom: "1rem",
+          }}
+        >
+          {props.user?.avatarUrl && (
+            <img
+              src={props.user.avatarUrl}
+              alt="Avatar"
+              style={{
+                width: "64px",
+                height: "64px",
+                borderRadius: "50%",
+                objectFit: "cover",
+              }}
+            />
+          )}
+          <div>
+            <h1 id="profile-displayName">
+              <a href="/">{props.user?.displayName || props.name}</a>
+            </h1>
+            <p>
+              <a
+                href={`/@${props.user?.username || props.username}`}
+                style={{ userSelect: "all" }}
               >
-                {props.user?.bio || ""}
-              </p>
-            </div>
+                {props.handle}
+              </a>{" "}
+              &middot;{" "}
+              <a
+                href={`/users/${props.user?.username || props.username}/followers`}
+              >
+                {props.followers === 1
+                  ? "1 follower"
+                  : `${props.followers} followers`}
+              </a>{" "}
+              &middot;{" "}
+              <a
+                href={`/users/${props.user?.username || props.username}/following`}
+              >
+                {props.following === 1
+                  ? "1 following"
+                  : `${props.following} following`}
+              </a>
+            </p>
+            <p id="profile-bio" style={{ marginTop: "0.5rem", color: "#666" }}>
+              {props.user?.bio || ""}
+            </p>
           </div>
         </div>
-      </article>
-      <PostView
-        post={props.post}
-        user={props.user}
-        domain={props.domain}
-        currentUserUrl={safeUserUrl}
-        currentDomain={safeDomain}
-      />
-    </>
-  );
-};
+      </div>
+    </article>
+    <PostView post={props.post} user={props.user} domain={props.domain} />
+  </>
+);
 
 export interface FollowerListProps {
   followers: IFollow[];
@@ -1210,18 +1185,3 @@ export const FollowingList: FC<FollowingListProps> = ({ following }) => (
     </ul>
   </>
 );
-
-// Helper to render actor handle
-function renderActorHandle(actorUrl: string, localDomain: string) {
-  try {
-    const url = new URL(actorUrl);
-    const pathname = url.pathname.split("/").filter(Boolean);
-    const username = pathname[pathname.length - 1];
-    if (url.host === localDomain) {
-      return username;
-    }
-    return `@${username}@${url.host}`;
-  } catch {
-    return actorUrl;
-  }
-}
