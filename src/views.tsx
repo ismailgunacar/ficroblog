@@ -541,8 +541,14 @@ export const Home: FC<HomeProps> = async ({
                 }}
               >
                 <a
-                  href={`/users/${post.author}/posts/${post._id}`}
+                  href={
+                    isRemote
+                      ? post.objectId || post.author
+                      : `/users/${post.author}/posts/${post._id}`
+                  }
                   class="secondary"
+                  target={isRemote ? "_blank" : undefined}
+                  rel={isRemote ? "noopener noreferrer" : undefined}
                 >
                   Permalink
                 </a>
