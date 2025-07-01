@@ -16,13 +16,17 @@ export const User = model<IUser>("User", UserSchema);
 export interface IPost extends Document {
   content: string;
   createdAt: Date;
-  author: string; // username
+  author: string; // username or actor URL for remote posts
+  remote?: boolean; // whether this is a remote post
+  objectId?: string; // ActivityPub object ID for remote posts
 }
 
 const PostSchema = new Schema<IPost>({
   content: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
   author: { type: String, required: true },
+  remote: { type: Boolean, default: false },
+  objectId: { type: String },
 });
 
 export const Post = model<IPost>("Post", PostSchema);
