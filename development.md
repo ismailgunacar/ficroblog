@@ -1,6 +1,6 @@
 # Fedify Microblog Tutorial Checklist (MongoDB Atlas Version)
 
-This is a **single-user, self-hosted federated microblog**. The goal is to follow the [Fedify microblog tutorial](https://fedify.dev/tutorial/microblog) and documentation as closely as possible, adapting to MongoDB Atlas for persistence. We also look to [Hollo](https://github.com/fedify-dev/hollo) for best practices and conventions, as it is the reference single-user Fedify microblog.
+This is a **single-user, self-hosted federated microblog**. Refer to [Fedify microblog tutorial](https://fedify.dev/tutorial/microblog) and documentation as closely as possible, adapting to MongoDB Atlas for persistence. We also look to [Hollo](https://github.com/fedify-dev/hollo) for best practices and conventions, as it is the reference single-user Fedify microblog.
 
 > **Note:** This project will **never** support multiple users or accounts. All endpoints, federation, and authentication are for a single user only.
 
@@ -17,6 +17,8 @@ Make sure to write concise, modular code.
 - [x] Create `User` model (single user constraint)
 - [x] Create `Post` model (content, author, timestamps)
 - [x] Create `Follow` model (federated followers)
+- [x] Create `Like` model (for like activities)
+- [x] Create `Announce` model (for boost/repost activities)
 - [x] Set up proper indexes and constraints
 
 ## Federation Foundation ✅
@@ -24,6 +26,19 @@ Make sure to write concise, modular code.
 - [x] Configure actor dispatcher for `/users/{identifier}` (single user)
 - [x] Set up inbox listeners for `/users/{identifier}/inbox`
 - [x] Configure shared inbox at `/inbox`
+- [x] Implement ActivityPub actor endpoints
+- [x] Add WebFinger discovery support
+- [x] Set up outbox, followers, and following collections
+
+## Like/Announce Federation ✅
+- [x] Implement Like activity handling (incoming)
+- [x] Implement Announce activity handling (incoming)
+- [x] Implement Undo activity handling (unlike/unannounce)
+- [x] Store likes and announces in MongoDB
+- [x] Create API endpoints for toggling likes/announces
+- [x] Add federation for outgoing Like/Announce activities
+- [x] Implement activity discovery and inbox resolution
+- [x] Add federation dashboard for monitoring activities
 
 ## Follow/Unfollow Implementation ✅
 - [x] Handle incoming `Follow` activities
@@ -47,6 +62,21 @@ Make sure to write concise, modular code.
 - [x] Implement account creation form (single user)
 - [x] Create user record in MongoDB
 - [x] Redirect to home page after setup
+
+## UI Features ✅
+- [x] Implement interactive like/announce buttons
+- [x] Add hover tooltips showing who liked/announced
+- [x] Create reusable post action components
+- [x] Add frontend JavaScript for interactivity
+- [x] Style like/announce buttons with proper visual feedback
+- [x] Display like and announce counts
+
+## Utility Functions ✅
+- [x] Domain extraction utilities
+- [x] Session management for development
+- [x] Federation activity creation utilities
+- [x] ActivityPub activity sending utilities
+- [x] Actor inbox discovery utilities
 
 ## Web Interface - Profile & Home ✅
 - [x] Create profile page (`/users/{username}`)

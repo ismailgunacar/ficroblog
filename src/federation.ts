@@ -18,12 +18,12 @@ import {
 } from "@fedify/fedify";
 import { InProcessMessageQueue, MemoryKvStore } from "@fedify/fedify";
 import { getLogger } from "@logtape/logtape";
-import { connectDB } from "./db.js";
+import { connectToDatabase } from "./db.js";
 import { Follow, Following, Post, User } from "./models.js";
 
 const logger = getLogger("wendy");
 
-await connectDB();
+await connectToDatabase();
 
 // Cache for in-memory keys
 const keyCache = new Map<
