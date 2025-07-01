@@ -1,10 +1,8 @@
-import type { FC, PropsWithChildren } from "hono/jsx";
+import type { FC } from "hono/jsx";
 import type { IFollow, IPost, IUser } from "./models.ts";
 import { Post } from "./models.ts";
 
-export const Layout: FC<PropsWithChildren<{ isAuthed?: boolean }>> = (
-  props,
-) => (
+export const Layout: FC = (props) => (
   <html lang="en" data-theme="light">
     <head>
       <meta charset="utf-8" />
@@ -37,11 +35,6 @@ export const Layout: FC<PropsWithChildren<{ isAuthed?: boolean }>> = (
           }
         }
       `}</style>
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `window.isAuthed = ${props.isAuthed ? "true" : "false"};`,
-        }}
-      />
     </head>
     <body>
       <main class="container">{props.children}</main>
@@ -149,7 +142,6 @@ export interface HomeProps {
   posts?: IPost[];
   isProfilePage?: boolean;
   domain?: string;
-  isAuthed?: boolean;
 }
 
 export const Home: FC<HomeProps> = async ({
@@ -160,7 +152,6 @@ export const Home: FC<HomeProps> = async ({
   posts,
   isProfilePage,
   domain,
-  isAuthed,
 }) => {
   // If posts are provided (profile page), use them; otherwise fetch all
   const allPosts = posts ?? (await Post.find().sort({ createdAt: -1 }).exec());
@@ -484,13 +475,6 @@ export const Home: FC<HomeProps> = async ({
           }
         }
 
-        // Like/Repost logic for single post view
-        const localUser = user.username;
-        const liked = post.likes && post.likes.includes(localUser);
-        const reposted = post.reposts && post.reposts.includes(localUser);
-        const likeCount = post.likes ? post.likes.length : 0;
-        const repostCount = post.reposts ? post.reposts.length : 0;
-
         return (
           <article
             key={post._id}
@@ -569,35 +553,29 @@ export const Home: FC<HomeProps> = async ({
                 {/* Like, Repost, Reply buttons (UI only) */}
                 <button
                   type="button"
-                  class={`secondary like-btn${liked ? " liked" : ""}`}
-                  data-post-id={post._id}
-                  disabled={!isAuthed}
+                  class="secondary"
                   style={{
                     background: "none",
                     border: "none",
-                    cursor: isAuthed ? "pointer" : "not-allowed",
-                    color: liked ? "#c00" : "#c00",
-                    fontWeight: liked ? 700 : 400,
+                    cursor: "pointer",
+                    color: "#c00",
                   }}
                   title="Like"
                 >
-                  ❤️ {likeCount}
+                  ❤️ 0
                 </button>
                 <button
                   type="button"
-                  class={`secondary repost-btn${reposted ? " reposted" : ""}`}
-                  data-post-id={post._id}
-                  disabled={!isAuthed}
+                  class="secondary"
                   style={{
                     background: "none",
                     border: "none",
-                    cursor: isAuthed ? "pointer" : "not-allowed",
-                    color: reposted ? "#0ac" : "#0ac",
-                    fontWeight: reposted ? 700 : 400,
+                    cursor: "pointer",
+                    color: "#0ac",
                   }}
                   title="Repost"
                 >
-                  🔄 {repostCount}
+                  🔄 0
                 </button>
                 <button
                   type="button"
@@ -933,33 +911,6 @@ export const Home: FC<HomeProps> = async ({
       }
     });
   }
-
-  document.querySelectorAll('.like-btn').forEach(function(btn) {
-    btn.addEventListener('click', async function() {
-      if (btn.disabled) return;
-      const postId = btn.getAttribute('data-post-id');
-      const res = await fetch('/posts/' + postId + '/like', { method: 'POST' });
-      const data = await res.json();
-      if (data.ok) {
-        btn.innerHTML = '❤️ ' + data.count;
-        if (data.liked) btn.classList.add('liked');
-        else btn.classList.remove('liked');
-      }
-    });
-  });
-  document.querySelectorAll('.repost-btn').forEach(function(btn) {
-    btn.addEventListener('click', async function() {
-      if (btn.disabled) return;
-      const postId = btn.getAttribute('data-post-id');
-      const res = await fetch('/posts/' + postId + '/repost', { method: 'POST' });
-      const data = await res.json();
-      if (data.ok) {
-        btn.innerHTML = '🔄 ' + data.count;
-        if (data.reposted) btn.classList.add('reposted');
-        else btn.classList.remove('reposted');
-      }
-    });
-  });
 })();
         `,
         }}
@@ -973,42 +924,9 @@ export interface PostViewProps {
 }
 
 export const PostView: FC<
-  PostViewProps & { user?: IUser; domain?: string; isAuthed?: boolean }
-> = ({ post, user, domain, isAuthed }) => {
+  PostViewProps & { user?: IUser; domain?: string }
+> = ({ post, user, domain }) => {
   // Use user and domain if provided for avatar, display name, handle
-  const isRemote = post.remote;
-  let displayName = user?.displayName || post.remoteAuthorName || post.author;
-  let avatarUrl = user?.avatarUrl || post.remoteAuthorAvatar || "";
-  let handle = user?.username
-    ? `@${user.username}${domain ? `@${domain}` : ""}`
-    : post.author;
-
-  if (isRemote && post.author) {
-    try {
-      const url = new URL(post.author);
-      const pathParts = url.pathname.split("/").filter(Boolean);
-      let username = "";
-      if (pathParts.length > 0) {
-        username = pathParts[pathParts.length - 1];
-        if (username.startsWith("@")) username = username.substring(1);
-      }
-      displayName = post.remoteAuthorName || username || "Remote User";
-      avatarUrl = post.remoteAuthorAvatar || "";
-      handle = `@${username}@${url.hostname}`;
-    } catch (e) {
-      displayName = post.remoteAuthorName || "Remote User";
-      avatarUrl = post.remoteAuthorAvatar || "";
-      handle = post.author;
-    }
-  }
-
-  // Like/Repost logic for single post view
-  const localUser = user?.username || "";
-  const liked = post.likes && post.likes.includes(localUser);
-  const reposted = post.reposts && post.reposts.includes(localUser);
-  const likeCount = post.likes ? post.likes.length : 0;
-  const repostCount = post.reposts ? post.reposts.length : 0;
-
   return (
     <article
       class="card"
@@ -1023,7 +941,7 @@ export const PostView: FC<
       {/* Avatar */}
       <div style={{ flex: "0 0 48px" }}>
         <img
-          src={avatarUrl || ""}
+          src={user?.avatarUrl || ""}
           alt="Avatar"
           style={{
             width: 48,
@@ -1044,9 +962,14 @@ export const PostView: FC<
           }}
         >
           <div>
-            <span style={{ fontWeight: 600 }}>{displayName}</span>
+            <span style={{ fontWeight: 600 }}>
+              {user?.displayName || post.author}
+            </span>
             <br />
-            <span style={{ color: "#888", fontSize: "0.95em" }}>{handle}</span>
+            <span style={{ color: "#888", fontSize: "0.95em" }}>
+              @{user?.username || post.author}
+              {domain ? `@${domain}` : ""}
+            </span>
           </div>
           <time
             dateTime={new Date(post.createdAt).toISOString()}
@@ -1069,57 +992,40 @@ export const PostView: FC<
             color: "#666",
           }}
         >
-          <a
-            href={
-              isRemote
-                ? post.objectId || post.author
-                : `/users/${post.author}/posts/${post._id}`
-            }
-            class="secondary"
-            target={isRemote ? "_blank" : undefined}
-            rel={isRemote ? "noopener noreferrer" : undefined}
-          >
-            Permalink
-          </a>
+          {/* Like, Repost, Reply buttons (UI only) */}
           <button
             type="button"
-            class={`secondary like-btn${liked ? " liked" : ""}`}
-            data-post-id={post._id}
-            disabled={!isAuthed}
+            class="secondary"
             style={{
               background: "none",
               border: "none",
-              cursor: isAuthed ? "pointer" : "not-allowed",
-              color: liked ? "#c00" : "#c00",
-              fontWeight: liked ? 700 : 400,
+              cursor: "pointer",
+              color: "#c00",
             }}
             title="Like"
           >
-            ❤️ {likeCount}
+            ❤️ 0
           </button>
           <button
             type="button"
-            class={`secondary repost-btn${reposted ? " reposted" : ""}`}
-            data-post-id={post._id}
-            disabled={!isAuthed}
+            class="secondary"
             style={{
               background: "none",
               border: "none",
-              cursor: isAuthed ? "pointer" : "not-allowed",
-              color: reposted ? "#0ac" : "#0ac",
-              fontWeight: reposted ? 700 : 400,
+              cursor: "pointer",
+              color: "#0ac",
             }}
             title="Repost"
           >
-            🔄 {repostCount}
+            🔄 0
           </button>
           <button
             type="button"
             class="secondary reply-btn"
             data-post-id={post._id}
             data-post-content={post.content}
-            data-post-author={displayName}
-            data-post-handle={handle}
+            data-post-author={user?.displayName || post.author}
+            data-post-handle={`@${user?.username || post.author}${domain ? `@${domain}` : ""}`}
             style={{
               background: "none",
               border: "none",
@@ -1217,12 +1123,7 @@ export const PostPage: FC<PostPageProps> = (props) => (
         </div>
       </div>
     </article>
-    <PostView
-      post={props.post}
-      user={props.user}
-      domain={props.domain}
-      isAuthed={props.isAuthed}
-    />
+    <PostView post={props.post} user={props.user} domain={props.domain} />
   </>
 );
 
@@ -1247,47 +1148,38 @@ export const FollowerList: FC<FollowerListProps> = ({ followers }) => (
 
 export interface FollowingListProps {
   following: IFollow[];
-  isAuthed?: boolean;
 }
 
-export const FollowingList: FC<FollowingListProps> = ({
-  following,
-  isAuthed,
-}) => (
+export const FollowingList: FC<FollowingListProps> = ({ following }) => (
   <>
     <h2>Following</h2>
     <ul>
       {following.map((follow) => (
-        <li
-          key={follow.following}
-          style={{ display: "flex", alignItems: "center", gap: "0.5em" }}
-        >
+        <li key={follow.following}>
           <a href={follow.following} class="secondary">
             {follow.following}
           </a>
-          {isAuthed ? (
-            <form
-              method="post"
-              action="/unfollow"
-              style={{ display: "inline", margin: 0 }}
+          <form
+            method="post"
+            action="/unfollow"
+            style={{ display: "inline", marginLeft: "1rem" }}
+          >
+            <input type="hidden" name="following" value={follow.following} />
+            <button
+              type="submit"
+              class="secondary"
+              style={{
+                fontSize: "0.9em",
+                background: "none",
+                border: "none",
+                padding: "0",
+                cursor: "pointer",
+                textDecoration: "underline",
+              }}
             >
-              <input type="hidden" name="following" value={follow.following} />
-              <button
-                type="submit"
-                class="secondary"
-                style={{
-                  background: "none",
-                  border: "none",
-                  padding: 0,
-                  cursor: "pointer",
-                  textDecoration: "underline",
-                  color: "#c00",
-                }}
-              >
-                Unfollow
-              </button>
-            </form>
-          ) : null}
+              Unfollow
+            </button>
+          </form>
         </li>
       ))}
     </ul>

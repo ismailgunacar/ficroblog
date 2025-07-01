@@ -1,13 +1,11 @@
 import {
   Accept,
-  Announce,
   type Context,
   Create,
   Delete,
   Endpoints,
   Follow as FediFollow,
   Image,
-  Like,
   Note,
   PUBLIC_COLLECTION,
   Person,
@@ -18,12 +16,12 @@ import {
 } from "@fedify/fedify";
 import { InProcessMessageQueue, MemoryKvStore } from "@fedify/fedify";
 import { getLogger } from "@logtape/logtape";
-import { connectToDatabase } from "./db.js";
+import { connectDB } from "./db.js";
 import { Follow, Following, Post, User } from "./models.js";
 
 const logger = getLogger("wendy");
 
-await connectToDatabase();
+await connectDB();
 
 // Cache for in-memory keys
 const keyCache = new Map<
@@ -34,7 +32,7 @@ const keyCache = new Map<
 const federation = createFederation({
   kv: new MemoryKvStore(),
   queue: new InProcessMessageQueue(),
-  // trustProxy: true, // Remove if not supported by CreateFederationOptions
+  trustProxy: true,
 });
 
 federation
@@ -280,102 +278,6 @@ federation
     // For now, just log the deletion. You could add cleanup logic here if desired.
     // Respond with 202 Accepted
     return ctx.res?.status(202);
-  })
-  // Like/Announce/Undo robust handler
-  .on("*", async (ctx, activity) => {
-    // Normalize type to array of lowercase strings
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any
-    const act: unknown = activity;
-    let types: string[] = [];
-    if (Array.isArray((act as { type?: unknown }).type)) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      types = ((act as { type: unknown[] }).type as unknown[]).map((t) =>
-        String(t).toLowerCase(),
-      );
-    } else if ((act as { type?: unknown }).type) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      types = [String((act as { type: unknown }).type).toLowerCase()];
-    }
-
-    // --- LIKE ---
-    if (types.includes("like")) {
-      const objectId = activity.object?.href || activity.object;
-      const actor = activity.actorId?.href || activity.actor;
-      if (!objectId || !actor) return;
-      const post = await Post.findOne({ objectId }).exec();
-      if (!post) return;
-      if (!post.likes) post.likes = [];
-      if (!post.likes.includes(actor)) {
-        post.likes.push(actor);
-        await post.save();
-      }
-      return;
-    }
-
-    // --- ANNOUNCE ---
-    if (types.includes("announce")) {
-      const objectId = activity.object?.href || activity.object;
-      const actor = activity.actorId?.href || activity.actor;
-      if (!objectId || !actor) return;
-      const post = await Post.findOne({ objectId }).exec();
-      if (!post) return;
-      if (!post.reposts) post.reposts = [];
-      if (!post.reposts.includes(actor)) {
-        post.reposts.push(actor);
-        await post.save();
-      }
-      return;
-    }
-
-    // --- UNDO (Like/Announce) ---
-    if (types.includes("undo")) {
-      // Undo can wrap Like or Announce
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const obj =
-        activity.object ||
-        (typeof activity.getObject === "function"
-          ? await activity.getObject()
-          : undefined);
-      if (!obj) return;
-      let innerTypes: string[] = [];
-      if (Array.isArray((obj as { type?: unknown }).type)) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        innerTypes = ((obj as { type: unknown[] }).type as unknown[]).map((t) =>
-          String(t).toLowerCase(),
-        );
-      } else if ((obj as { type?: unknown }).type) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        innerTypes = [String((obj as { type: unknown }).type).toLowerCase()];
-      }
-      // Accept both object/objectId for compatibility
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
-      const objectId =
-        (obj as any).object?.href ||
-        (obj as any).object ||
-        (obj as any).objectId;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
-      const actor =
-        (obj as any).actorId?.href ||
-        (obj as any).actorId ||
-        (obj as any).actor;
-      const post = objectId ? await Post.findOne({ objectId }).exec() : null;
-      if (innerTypes.includes("like") && post && post.likes) {
-        post.likes = post.likes.filter((a: string) => a !== actor);
-        await post.save();
-      } else if (innerTypes.includes("announce") && post && post.reposts) {
-        post.reposts = post.reposts.filter((a: string) => a !== actor);
-        await post.save();
-      }
-      return;
-    }
-
-    // --- CATCH-ALL LOG ---
-    // eslint-disable-next-line no-console, @typescript-eslint/no-unsafe-member-access
-    console.error(
-      "Unhandled activity type:",
-      (act as { type?: unknown }).type,
-      activity,
-    );
   });
 
 // Expose followers collection for ActivityPub

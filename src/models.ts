@@ -31,8 +31,6 @@ export interface IPost extends Document {
   remoteAuthorName?: string;
   remoteAuthorAvatar?: string;
   remoteAuthorUrl?: string;
-  likes?: string[]; // actor URLs or usernames who liked
-  reposts?: string[]; // actor URLs or usernames who reposted
 }
 
 const PostSchema = new Schema<IPost>({
@@ -46,8 +44,6 @@ const PostSchema = new Schema<IPost>({
   remoteAuthorName: { type: String },
   remoteAuthorAvatar: { type: String },
   remoteAuthorUrl: { type: String },
-  likes: { type: [String], default: [] },
-  reposts: { type: [String], default: [] },
 });
 
 export const Post = model<IPost>("Post", PostSchema);

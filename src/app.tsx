@@ -1,4 +1,4 @@
-import { Announce, Create, Follow, Like, Note, Undo } from "@fedify/fedify";
+import { Create, Follow, Note, Undo } from "@fedify/fedify";
 import { federation } from "@fedify/fedify/x/hono";
 import { getLogger } from "@logtape/logtape";
 import bcrypt from "bcrypt";
@@ -219,16 +219,14 @@ app.get("/", async (c) => {
   const url = new URL(c.req.url);
   const handle = `@${user.username}@${url.host}`;
   const domain = c.req.header("host");
-  const isAuthed = !!c.get("sessionUser");
 
   return c.html(
-    <Layout isAuthed={isAuthed}>
+    <Layout>
       <Home
         user={user}
         handle={handle}
         followers={followers}
         following={followingCount}
-        isAuthed={isAuthed}
         {...(domain ? { domain } : {})}
       />
     </Layout>,
@@ -359,7 +357,6 @@ app.get("/users/:username", async (c) => {
   const url = new URL(c.req.url);
   const handle = `@${username}@${url.host}`;
   const domain = c.req.header("host");
-  const isAuthed = !!c.get("sessionUser");
 
   // Fetch this user's posts
   const posts = await Post.find({ author: username })
@@ -367,7 +364,7 @@ app.get("/users/:username", async (c) => {
     .exec();
 
   return c.html(
-    <Layout isAuthed={isAuthed}>
+    <Layout>
       <Home
         user={user}
         handle={handle}
@@ -375,7 +372,6 @@ app.get("/users/:username", async (c) => {
         following={followingCount}
         posts={posts}
         isProfilePage={true}
-        isAuthed={isAuthed}
         {...(domain ? { domain } : {})}
       />
     </Layout>,
@@ -491,10 +487,9 @@ app.get("/users/:username/posts/:id", async (c) => {
   const url = new URL(c.req.url);
   const handle = `@${username}@${url.host}`;
   const domain = c.req.header("host");
-  const isAuthed = !!c.get("sessionUser");
 
   return c.html(
-    <Layout isAuthed={isAuthed}>
+    <Layout>
       <PostPage
         name={user.displayName}
         username={user.username}
@@ -504,7 +499,6 @@ app.get("/users/:username/posts/:id", async (c) => {
         post={post}
         user={user}
         domain={domain}
-        isAuthed={isAuthed}
       />
     </Layout>,
   );
@@ -539,132 +533,11 @@ app.get("/users/:username/following", async (c) => {
     .sort({ createdAt: -1 })
     .exec();
 
-  // Check if the user is authenticated
-  const isAuthed = !!c.get("sessionUser");
-
   return c.html(
-    <Layout isAuthed={isAuthed}>
-      <FollowingList following={following} isAuthed={isAuthed} />
+    <Layout>
+      <FollowingList following={following} />
     </Layout>,
   );
-});
-
-// Like a post
-app.post("/posts/:id/like", async (c) => {
-  const user = await User.findOne().exec();
-  if (!user || !c.get("sessionUser"))
-    return c.json({ ok: false, error: "Unauthorized" }, 401);
-  const postId = c.req.param("id");
-  const post = await Post.findById(postId).exec();
-  if (!post) return c.json({ ok: false, error: "Not found" }, 404);
-  const actor = user.username;
-  const idx = post.likes?.indexOf(actor) ?? -1;
-  let liked = false;
-  if (idx === -1) {
-    post.likes?.push(actor);
-    liked = true;
-  } else {
-    post.likes?.splice(idx, 1);
-    liked = false;
-  }
-  await post.save();
-
-  // Outgoing federation for remote posts
-  if (post.remote && post.author && post.objectId) {
-    try {
-      // Fetch remote actor's inbox
-      const actorRes = await fetch(post.author, {
-        headers: { Accept: "application/activity+json" },
-      });
-      const actorObj = await actorRes.json();
-      const inbox = actorObj.inbox;
-      if (inbox) {
-        const myActorUrl = `${c.req.protocol}://${c.req.header("host")}/users/${user.username}`;
-        if (liked) {
-          // Send Like
-          const likeActivity = new Like({
-            actor: new URL(myActorUrl),
-            object: new URL(post.objectId),
-          });
-          await federation.deliverActivity(likeActivity, new URL(inbox));
-        } else {
-          // Send Undo(Like)
-          const likeActivity = new Like({
-            actor: new URL(myActorUrl),
-            object: new URL(post.objectId),
-          });
-          const undoActivity = new Undo({
-            actor: new URL(myActorUrl),
-            object: likeActivity,
-          });
-          await federation.deliverActivity(undoActivity, new URL(inbox));
-        }
-      }
-    } catch (e) {
-      // Ignore federation errors for now
-    }
-  }
-
-  return c.json({ ok: true, liked, count: post.likes?.length || 0 });
-});
-
-// Repost a post
-app.post("/posts/:id/repost", async (c) => {
-  const user = await User.findOne().exec();
-  if (!user || !c.get("sessionUser"))
-    return c.json({ ok: false, error: "Unauthorized" }, 401);
-  const postId = c.req.param("id");
-  const post = await Post.findById(postId).exec();
-  if (!post) return c.json({ ok: false, error: "Not found" }, 404);
-  const actor = user.username;
-  const idx = post.reposts?.indexOf(actor) ?? -1;
-  let reposted = false;
-  if (idx === -1) {
-    post.reposts?.push(actor);
-    reposted = true;
-  } else {
-    post.reposts?.splice(idx, 1);
-    reposted = false;
-  }
-  await post.save();
-
-  // Outgoing federation for remote posts
-  if (post.remote && post.author && post.objectId) {
-    try {
-      // Fetch remote actor's inbox
-      const actorRes = await fetch(post.author, {
-        headers: { Accept: "application/activity+json" },
-      });
-      const actorObj = await actorRes.json();
-      const inbox = actorObj.inbox;
-      if (inbox) {
-        const myActorUrl = `${c.req.protocol}://${c.req.header("host")}/users/${user.username}`;
-        if (reposted) {
-          // Send Announce
-          const announceActivity = new Announce({
-            actor: new URL(myActorUrl),
-            object: new URL(post.objectId),
-          });
-          await federation.deliverActivity(announceActivity, new URL(inbox));
-        } else {
-          // Send Undo(Announce)
-          const announceActivity = new Announce({
-            actor: new URL(myActorUrl),
-            object: new URL(post.objectId),
-          });
-          const undoActivity = new Undo({
-            actor: new URL(myActorUrl),
-            object: announceActivity,
-          });
-          await federation.deliverActivity(undoActivity, new URL(inbox));
-        }
-      }
-    } catch (e) {
-      // Ignore federation errors for now
-    }
-  }
-
-  return c.json({ ok: true, reposted, count: post.reposts?.length || 0 });
 });
 
 export default app;
