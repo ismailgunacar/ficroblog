@@ -23,6 +23,9 @@ export const Layout: FC = (props) => (
           padding: 1.5rem;
           margin: 2rem 0;
         }
+        input:not([type=checkbox],[type=radio]), select, textarea, [type=button], [type=reset], [type=submit] {
+          margin-bottom: 0;
+        }
         @media (max-width: 600px) {
           .container {
             padding: 0.5rem;
