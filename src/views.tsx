@@ -927,6 +927,32 @@ export const PostView: FC<
   PostViewProps & { user?: IUser; domain?: string }
 > = ({ post, user, domain }) => {
   // Use user and domain if provided for avatar, display name, handle
+  const isRemote = post.remote;
+  let displayName = user?.displayName || post.remoteAuthorName || post.author;
+  let avatarUrl = user?.avatarUrl || post.remoteAuthorAvatar || "";
+  let handle = user?.username
+    ? `@${user.username}${domain ? `@${domain}` : ""}`
+    : post.author;
+
+  if (isRemote && post.author) {
+    try {
+      const url = new URL(post.author);
+      const pathParts = url.pathname.split("/").filter(Boolean);
+      let username = "";
+      if (pathParts.length > 0) {
+        username = pathParts[pathParts.length - 1];
+        if (username.startsWith("@")) username = username.substring(1);
+      }
+      displayName = post.remoteAuthorName || username || "Remote User";
+      avatarUrl = post.remoteAuthorAvatar || "";
+      handle = `@${username}@${url.hostname}`;
+    } catch (e) {
+      displayName = post.remoteAuthorName || "Remote User";
+      avatarUrl = post.remoteAuthorAvatar || "";
+      handle = post.author;
+    }
+  }
+
   return (
     <article
       class="card"
@@ -941,7 +967,7 @@ export const PostView: FC<
       {/* Avatar */}
       <div style={{ flex: "0 0 48px" }}>
         <img
-          src={user?.avatarUrl || ""}
+          src={avatarUrl || ""}
           alt="Avatar"
           style={{
             width: 48,
@@ -962,14 +988,9 @@ export const PostView: FC<
           }}
         >
           <div>
-            <span style={{ fontWeight: 600 }}>
-              {user?.displayName || post.author}
-            </span>
+            <span style={{ fontWeight: 600 }}>{displayName}</span>
             <br />
-            <span style={{ color: "#888", fontSize: "0.95em" }}>
-              @{user?.username || post.author}
-              {domain ? `@${domain}` : ""}
-            </span>
+            <span style={{ color: "#888", fontSize: "0.95em" }}>{handle}</span>
           </div>
           <time
             dateTime={new Date(post.createdAt).toISOString()}
@@ -992,6 +1013,18 @@ export const PostView: FC<
             color: "#666",
           }}
         >
+          <a
+            href={
+              isRemote
+                ? post.objectId || post.author
+                : `/users/${post.author}/posts/${post._id}`
+            }
+            class="secondary"
+            target={isRemote ? "_blank" : undefined}
+            rel={isRemote ? "noopener noreferrer" : undefined}
+          >
+            Permalink
+          </a>
           {/* Like, Repost, Reply buttons (UI only) */}
           <button
             type="button"
@@ -1024,8 +1057,8 @@ export const PostView: FC<
             class="secondary reply-btn"
             data-post-id={post._id}
             data-post-content={post.content}
-            data-post-author={user?.displayName || post.author}
-            data-post-handle={`@${user?.username || post.author}${domain ? `@${domain}` : ""}`}
+            data-post-author={displayName}
+            data-post-handle={handle}
             style={{
               background: "none",
               border: "none",
