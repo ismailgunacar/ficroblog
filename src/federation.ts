@@ -183,13 +183,19 @@ federation
       object.attribution?.href ||
       object.attributedTo?.href ||
       object.actor?.href;
-    await Post.create({
-      content,
-      author,
-      createdAt: new Date(object.published || Date.now()),
-      remote: true,
-      objectId: object.id,
-    });
+
+    if (author) {
+      await Post.create({
+        content,
+        author,
+        createdAt: new Date(object.published || Date.now()),
+        remote: true,
+        objectId: object.id?.href,
+      });
+      logger.info(
+        `Stored remote post from ${author}: ${content.substring(0, 50)}...`,
+      );
+    }
   });
 
 // Expose followers collection for ActivityPub
@@ -278,9 +284,9 @@ federation.setOutboxDispatcher(
             to: PUBLIC_COLLECTION,
             content: post.content,
             mediaType: "text/html",
-            published: post.createdAt,
+            published: post.createdAt.toISOString(),
           }),
-          published: post.createdAt,
+          published: post.createdAt.toISOString(),
         }),
     );
 
