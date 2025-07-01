@@ -94,15 +94,18 @@ export const Profile: FC<ProfileProps> = ({
 }) => (
   <>
     <h1>
-      <a href={`/users/${username}`}>{name}</a>
+      <a href="/">{name}</a>
     </h1>
     <p>
-      <span style="user-select: all;">{handle}</span> &middot;{" "}
-      <a href={`/users/${username}/followers`}>
+      <a href={`/@${username}`} style={{ userSelect: "all" }}>
+        {handle}
+      </a>{" "}
+      &middot;{" "}
+      <a href={`/@${username}/followers`}>
         {followers === 1 ? "1 follower" : `${followers} followers`}
       </a>{" "}
       &middot;{" "}
-      <a href={`/users/${username}/following`}>
+      <a href={`/@${username}/following`}>
         {following === 1 ? "1 following" : `${following} following`}
       </a>
     </p>
@@ -125,52 +128,6 @@ export const Home: FC<HomeProps> = async ({
   const posts = await Post.find().sort({ createdAt: -1 }).exec();
   return (
     <>
-      {/* Top Auth Card ... now includes Edit/Cancel/Save buttons */}
-      <article class="card" style={{ padding: "1rem", marginBottom: "1.5rem" }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <span id="auth-status">{/* Auth status will be set by JS */}</span>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <button id="auth-btn" type="button">
-              Login
-            </button>
-            <input
-              id="auth-password"
-              type="password"
-              placeholder="Enter password"
-              style={{ width: "180px", display: "none" }}
-              autoComplete="current-password"
-            />
-            <button
-              id="profile-edit-btn"
-              type="button"
-              style={{ display: "none" }}
-            >
-              Edit
-            </button>
-            <button
-              id="profile-cancel-btn"
-              type="button"
-              style={{ display: "none" }}
-            >
-              Cancel
-            </button>
-            <button
-              id="profile-save-btn"
-              type="button"
-              style={{ display: "none" }}
-            >
-              Save
-            </button>
-          </div>
-        </div>
-      </article>
-
       {/* Heading/Profile Card with bio and edit */}
       <article class="card" style={{ padding: "1rem", marginBottom: "1.5rem" }}>
         <div id="profile-view">
@@ -213,14 +170,19 @@ export const Home: FC<HomeProps> = async ({
               />
             )}
             <div>
-              <h1 id="profile-displayName">{user.displayName}</h1>
+              <h1 id="profile-displayName">
+                <a href="/">{user.displayName}</a>
+              </h1>
               <p>
-                <span style={{ userSelect: "all" }}>{handle}</span> &middot;{" "}
-                <a href={`/users/${user.username}/followers`}>
+                <a href={`/@${user.username}`} style={{ userSelect: "all" }}>
+                  {handle}
+                </a>{" "}
+                &middot;{" "}
+                <a href={`/@${user.username}/followers`}>
                   {followers === 1 ? "1 follower" : `${followers} followers`}
                 </a>{" "}
                 &middot;{" "}
-                <a href={`/users/${user.username}/following`}>
+                <a href={`/@${user.username}/following`}>
                   {following === 1 ? "1 following" : `${following} following`}
                 </a>
               </p>
@@ -307,7 +269,51 @@ export const Home: FC<HomeProps> = async ({
           </label>
         </form>
       </article>
-
+      {/* Top Auth Card ... now includes Edit/Cancel/Save buttons, now moved below profile card */}
+      <article class="card" style={{ padding: "1rem", marginBottom: "1.5rem" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <span id="auth-status">{/* Auth status will be set by JS */}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <button id="auth-btn" type="button">
+              Login
+            </button>
+            <input
+              id="auth-password"
+              type="password"
+              placeholder="Enter password"
+              style={{ width: "180px", display: "none" }}
+              autoComplete="current-password"
+            />
+            <button
+              id="profile-edit-btn"
+              type="button"
+              style={{ display: "none" }}
+            >
+              Edit
+            </button>
+            <button
+              id="profile-cancel-btn"
+              type="button"
+              style={{ display: "none" }}
+            >
+              Cancel
+            </button>
+            <button
+              id="profile-save-btn"
+              type="button"
+              style={{ display: "none" }}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </article>
       {/* Follow Someone Card and New Post Card are now wrapped for auth-only visibility */}
       <div id="auth-only" style={{ display: "none" }}>
         {/* Follow Someone Card */}
@@ -323,7 +329,7 @@ export const Home: FC<HomeProps> = async ({
           class="card"
           style={{ padding: "1rem", marginBottom: "1.5rem" }}
         >
-          <form method="post" action={`/users/${user.username}/posts`}>
+          <form method="post" action={`/@${user.username}/posts`}>
             <fieldset>
               <label>
                 <textarea name="content" required placeholder="What's up?" />
@@ -333,7 +339,6 @@ export const Home: FC<HomeProps> = async ({
           </form>
         </article>
       </div>
-
       {/* Timeline Section (posts already in cards) */}
       {posts.map((post) => (
         <article
@@ -367,7 +372,7 @@ export const Home: FC<HomeProps> = async ({
                 {" "}
                 &middot;{" "}
                 <a
-                  href={`/users/${post.author}/posts/${post._id}`}
+                  href={`/@${post.author}/posts/${post._id}`}
                   class="secondary"
                 >
                   permalink
@@ -377,7 +382,6 @@ export const Home: FC<HomeProps> = async ({
           </div>
         </article>
       ))}
-
       {/* Seamless login/logout JS */}
       {/* biome-ignore lint/security/noDangerouslySetInnerHtml: Inline script for login/logout and profile edit UI */}
       <script

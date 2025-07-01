@@ -24,6 +24,36 @@ const logger = getLogger("wendy");
 await connectDB();
 
 const app = new Hono();
+
+// Add /@* route to render the user profile page directly (must be before federation middleware)
+app.get("/@*", async (c) => {
+  const path = c.req.path;
+  const username = path.substring(2); // Remove the /@ prefix
+  const user = await User.findOne({ username }).exec();
+  if (!user) return c.notFound();
+
+  const following = `https://${c.req.header("host")}/users/${username}`;
+  const followers = await FollowModel.countDocuments({ following });
+  const followingCount = await Following.countDocuments({
+    follower: following,
+  });
+
+  const url = new URL(c.req.url);
+  const handle = `@${username}@${url.host}`;
+
+  return c.html(
+    <Layout>
+      <Profile
+        name={user.displayName}
+        username={user.username}
+        handle={handle}
+        followers={followers}
+        following={followingCount}
+      />
+    </Layout>,
+  );
+});
+
 app.use(federation(fedi, () => undefined));
 
 type AppContext = Context<{ Variables: { sessionUser?: string } }>;
@@ -117,9 +147,8 @@ app.post("/logout", async (c: AppContext) => {
 app.get("/session", async (c: AppContext) => {
   if (c.get("sessionUser")) {
     return c.json({ loggedIn: true });
-  } else {
-    return c.json({ loggedIn: false });
   }
+  return c.json({ loggedIn: false });
 });
 
 // Profile update endpoint
