@@ -185,10 +185,15 @@ federation
     }
 
     logger.info(`Create activity object type: ${object.type}`);
+    logger.info(`Create activity object: ${JSON.stringify(object, null, 2)}`);
 
-    // Only process Note objects (posts)
-    if (object.type !== "Note") {
-      logger.info(`Ignoring non-Note Create activity: ${object.type}`);
+    // Check if it's a Note (post) - handle both direct type and object structure
+    const isNote = object.type === "Note" || object.constructor.name === "Note";
+
+    if (!isNote) {
+      logger.info(
+        `Ignoring non-Note Create activity: ${object.type || object.constructor.name}`,
+      );
       return;
     }
 
@@ -196,7 +201,8 @@ federation
     const author =
       object.attribution?.href ||
       object.attributedTo?.href ||
-      object.actor?.href;
+      object.actor?.href ||
+      create.actorId?.href;
 
     logger.info(`Processing Note from author: ${author}`);
     logger.info(`Note content: ${content?.substring(0, 100)}...`);
@@ -217,7 +223,9 @@ federation
         logger.error(`Failed to store remote post: ${error}`);
       }
     } else {
-      logger.error(`Missing author or content for remote post`);
+      logger.error(
+        `Missing author or content for remote post. Author: ${author}, Content: ${content ? "present" : "missing"}`,
+      );
     }
   });
 
