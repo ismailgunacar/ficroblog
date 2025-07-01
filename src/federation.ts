@@ -284,9 +284,9 @@ federation.setOutboxDispatcher(
             to: PUBLIC_COLLECTION,
             content: post.content,
             mediaType: "text/html",
-            published: post.createdAt.toISOString(),
+            published: post.createdAt,
           }),
-          published: post.createdAt.toISOString(),
+          published: post.createdAt,
         }),
     );
 
