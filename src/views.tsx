@@ -1,8 +1,10 @@
-import type { FC } from "hono/jsx";
+import type { FC, PropsWithChildren } from "hono/jsx";
 import type { IFollow, IPost, IUser } from "./models.ts";
 import { Post } from "./models.ts";
 
-export const Layout: FC<{ isAuthed?: boolean }> = (props) => (
+export const Layout: FC<PropsWithChildren<{ isAuthed?: boolean }>> = (
+  props,
+) => (
   <html lang="en" data-theme="light">
     <head>
       <meta charset="utf-8" />
@@ -1186,9 +1188,13 @@ export const FollowerList: FC<FollowerListProps> = ({ followers }) => (
 
 export interface FollowingListProps {
   following: IFollow[];
+  isAuthed?: boolean;
 }
 
-export const FollowingList: FC<FollowingListProps> = ({ following }) => (
+export const FollowingList: FC<FollowingListProps> = ({
+  following,
+  isAuthed,
+}) => (
   <>
     <h2>Following</h2>
     <ul>
@@ -1200,7 +1206,7 @@ export const FollowingList: FC<FollowingListProps> = ({ following }) => (
           <a href={follow.following} class="secondary">
             {follow.following}
           </a>
-          {typeof window !== "undefined" && (window as any).isAuthed ? (
+          {isAuthed ? (
             <form
               method="post"
               action="/unfollow"

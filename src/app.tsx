@@ -533,9 +533,12 @@ app.get("/users/:username/following", async (c) => {
     .sort({ createdAt: -1 })
     .exec();
 
+  // Check if the user is authenticated
+  const isAuthed = !!c.get("sessionUser");
+
   return c.html(
-    <Layout>
-      <FollowingList following={following} />
+    <Layout isAuthed={isAuthed}>
+      <FollowingList following={following} isAuthed={isAuthed} />
     </Layout>,
   );
 });
