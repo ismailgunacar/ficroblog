@@ -243,22 +243,33 @@ app.post("/users/:username/posts", async (c) => {
 
   // Send Create activity to followers
   const ctx = fedi.createContext(c.req.raw, undefined);
+  const publicUrl = c.req.header("host")?.includes("localhost")
+    ? "https://d86c19a367b63a.lhr.life"
+    : `https://${c.req.header("host")}`;
+
   const note = new Note({
-    id: new URL(`/users/${username}/posts/${post._id}`, c.req.url),
-    attribution: new URL(`/users/${username}`, c.req.url),
+    id: new URL(`/users/${username}/posts/${post._id}`, publicUrl),
+    attribution: new URL(`/users/${username}`, publicUrl),
     content: post.content,
     mediaType: "text/html",
+    to: ["https://www.w3.org/ns/activitystreams#Public"],
   });
+
+  logger.info(`Sending Create activity to followers for post ${post._id}`);
+  logger.info(`Note ID: ${note.id?.href}`);
+  logger.info(`Actor: ${publicUrl}/users/${username}`);
 
   await ctx.sendActivity(
     { identifier: username },
     "followers",
     new Create({
-      id: new URL(`#create-${post._id}`, note.id?.href || c.req.url),
-      actor: new URL(`/users/${username}`, c.req.url),
+      id: new URL(`#create-${post._id}`, `${publicUrl}/users/${username}`),
+      actor: new URL(`/users/${username}`, publicUrl),
       object: note,
     }),
   );
+
+  logger.info(`Successfully sent Create activity to followers`);
 
   return c.redirect(`/users/${username}/posts/${post._id}`);
 });
