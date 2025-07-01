@@ -40,7 +40,7 @@ app.get("/@*", async (c) => {
 
   const url = new URL(c.req.url);
   const handle = `@${username}@${url.host}`;
-  const domain = c.req.header("host") || "localhost";
+  const domain = c.req.header("host");
 
   // Fetch this user's posts
   const posts = await Post.find({ author: username })

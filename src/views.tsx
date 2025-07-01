@@ -155,7 +155,7 @@ export const Home: FC<HomeProps> = async ({
 }) => {
   // If posts are provided (profile page), use them; otherwise fetch all
   const allPosts = posts ?? (await Post.find().sort({ createdAt: -1 }).exec());
-  const postDomain = domain || "localhost";
+  const postDomain = domain;
   return (
     <>
       {/* Heading/Profile Card with bio and edit */}
