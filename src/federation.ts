@@ -15,7 +15,7 @@ import {
 import { InProcessMessageQueue, MemoryKvStore } from "@fedify/fedify";
 import { getLogger } from "@logtape/logtape";
 import { connectDB } from "./db.js";
-import { Follow, Following, Post } from "./models.js";
+import { Follow, Following, Post, User } from "./models.js";
 
 const logger = getLogger("wendy");
 
@@ -257,5 +257,65 @@ federation.setObjectDispatcher(
     });
   },
 );
+
+// Expose outbox for ActivityPub
+federation.setOutboxDispatcher(
+  "/users/{identifier}/outbox",
+  async (ctx, identifier, cursor) => {
+    const posts = await Post.find({ author: identifier })
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .exec();
+
+    const activities = posts.map(
+      (post) =>
+        new Create({
+          id: new URL(`#create-${post._id}`, ctx.getActorUri(identifier).href),
+          actor: ctx.getActorUri(identifier),
+          object: new Note({
+            id: ctx.getObjectUri(Note, { identifier, id: post._id.toString() }),
+            attribution: ctx.getActorUri(identifier),
+            to: PUBLIC_COLLECTION,
+            content: post.content,
+            mediaType: "text/html",
+            published: post.createdAt,
+          }),
+          published: post.createdAt,
+        }),
+    );
+
+    return { items: activities };
+  },
+);
+
+// Set up NodeInfo dispatcher
+federation.setNodeInfoDispatcher("/.well-known/nodeinfo/2.0", async (ctx) => {
+  const userCount = await User.countDocuments();
+  const postCount = await Post.countDocuments();
+
+  return {
+    version: "2.0",
+    software: {
+      name: "fongoblog2",
+      version: "1.0.0",
+    },
+    protocols: ["activitypub"],
+    services: {
+      inbound: [],
+      outbound: [],
+    },
+    openRegistrations: false,
+    usage: {
+      users: {
+        total: userCount,
+      },
+      localPosts: postCount,
+    },
+    metadata: {
+      nodeName: "fongoblog2",
+      nodeDescription: "A federated microblogging platform",
+    },
+  };
+});
 
 export default federation;
