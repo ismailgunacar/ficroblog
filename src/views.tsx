@@ -1205,7 +1205,6 @@ export const FollowingList: FC<FollowingListProps> = ({ following }) => (
               type="submit"
               class="secondary"
               style={{
-                fontSize: "0.9em",
                 background: "none",
                 border: "none",
                 padding: 0,
