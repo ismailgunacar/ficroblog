@@ -255,6 +255,7 @@ app.post("/users/:username/posts", async (c) => {
     "followers",
     new Create({
       id: new URL(`#create-${post._id}`, note.id?.href || c.req.url),
+      actor: new URL(`/users/${username}`, c.req.url),
       object: note,
     }),
   );
