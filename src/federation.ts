@@ -257,9 +257,12 @@ federation
       const items: Recipient[] = docs.map(
         (f: import("./models.js").IFollow) => {
           logger.info(`Adding follower: ${f.follower}`);
+          // Try to construct the inbox URL
+          const inboxUrl = `${f.follower}/inbox`;
+          logger.info(`Constructed inbox URL: ${inboxUrl}`);
           return {
             id: new URL(f.follower),
-            inboxId: null, // Optionally resolve inbox if you store it
+            inboxId: new URL(inboxUrl),
           };
         },
       );
