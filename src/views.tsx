@@ -300,7 +300,7 @@ export const Home: FC<HomeProps> = async ({
         </form>
       </article>
 
-      {/* Top Auth Card ... now includes Edit/Cancel/Save buttons */}
+      {/* Top Auth Card ... now includes Edit/Cancel/Save/Logout buttons */}
       {!isProfilePage && (
         <article class="card">
           <div
@@ -314,16 +314,14 @@ export const Home: FC<HomeProps> = async ({
             <div
               style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
             >
-              <button id="auth-btn" type="button">
-                Login
-              </button>
-              <input
-                id="auth-password"
-                type="password"
-                placeholder="Enter password"
-                style={{ width: "180px", display: "none" }}
-                autoComplete="current-password"
-              />
+              <span
+                id="auth-error"
+                style={{ color: "#c00", minWidth: "120px" }}
+              ></span>
+              <span
+                id="profile-error"
+                style={{ color: "#c00", minWidth: "120px" }}
+              ></span>
               <button
                 id="profile-edit-btn"
                 type="button"
@@ -345,6 +343,16 @@ export const Home: FC<HomeProps> = async ({
               >
                 Save
               </button>
+              <button id="auth-btn" type="button">
+                Login
+              </button>
+              <input
+                id="auth-password"
+                type="password"
+                placeholder="Enter password"
+                style={{ width: "180px", display: "none" }}
+                autoComplete="current-password"
+              />
             </div>
           </div>
         </article>
@@ -411,6 +419,16 @@ export const Home: FC<HomeProps> = async ({
                   </button>
                 </div>
               </div>
+              <span
+                id="post-error"
+                style={{
+                  color: "#c00",
+                  minWidth: "120px",
+                  display: "block",
+                  marginTop: "0.5em",
+                  marginBottom: "-0.5em",
+                }}
+              />
               <input
                 id="post-submit-btn"
                 type="submit"
@@ -555,6 +573,8 @@ export const Home: FC<HomeProps> = async ({
   let editingProfile = false;
   const authBtn = document.getElementById('auth-btn');
   const authStatus = document.getElementById('auth-status');
+  const authError = document.getElementById('auth-error');
+  const profileError = document.getElementById('profile-error');
   const pwInput = document.getElementById('auth-password');
   const authOnly = document.getElementById('auth-only');
   // Profile edit elements
@@ -576,7 +596,9 @@ export const Home: FC<HomeProps> = async ({
   function setLoggedInUI() {
     loggedIn = true;
     authBtn.textContent = 'Logout';
-    authStatus.textContent = 'You are signed in.';
+    if (authError) authError.textContent = '';
+    if (profileError) profileError.textContent = '';
+    authStatus.textContent = '';
     pwInput.style.display = 'none';
     pwInput.value = '';
     if (authOnly) authOnly.style.display = 'block';
@@ -588,7 +610,9 @@ export const Home: FC<HomeProps> = async ({
     loggedIn = false;
     editingProfile = false;
     authBtn.textContent = 'Login';
-    authStatus.textContent = 'You are not signed in.';
+    if (authError) authError.textContent = '';
+    if (profileError) profileError.textContent = '';
+    authStatus.textContent = '';
     pwInput.style.display = 'none';
     pwInput.value = '';
     if (authOnly) authOnly.style.display = 'none';
@@ -628,12 +652,12 @@ export const Home: FC<HomeProps> = async ({
             if (data.ok) {
               setLoggedInUI();
             } else {
-              authStatus.textContent = 'Login failed.';
+              if (authError) authError.textContent = 'Login failed.';
               pwInput.value = '';
               pwInput.focus();
             }
           } else {
-            authStatus.textContent = 'Login failed.';
+            if (authError) authError.textContent = 'Login failed.';
             pwInput.value = '';
             pwInput.focus();
           }
@@ -648,7 +672,7 @@ export const Home: FC<HomeProps> = async ({
       if (res.ok) {
         setLoggedOutUI();
       } else {
-        authStatus.textContent = 'Logout failed.';
+        if (authError) authError.textContent = 'Logout failed.';
       }
     }
   });
@@ -662,6 +686,7 @@ export const Home: FC<HomeProps> = async ({
       profileEditBtn.style.display = 'none';
       profileCancelBtn.style.display = 'inline-block';
       profileSaveBtn.style.display = 'inline-block';
+      if (profileError) profileError.textContent = '';
       if (editDisplayName) editDisplayName.value = profileDisplayName.textContent.replace(/'s microblog$/, '');
       if (editBio) editBio.value = profileBio.textContent;
       if (editUsername && profileUsername) editUsername.value = profileUsername.textContent.replace(/^@/, '');
@@ -676,12 +701,14 @@ export const Home: FC<HomeProps> = async ({
       profileEditBtn.style.display = 'inline-block';
       profileCancelBtn.style.display = 'none';
       profileSaveBtn.style.display = 'none';
+      if (profileError) profileError.textContent = '';
       if (editPassword) editPassword.value = '';
     });
     profileSaveBtn.addEventListener('click', async () => {
       if (!editDisplayName || !editBio || !editAvatarUrl || !editHeaderUrl || !editUsername) return;
       profileSaveBtn.disabled = true;
       profileSaveBtn.textContent = 'Saving...';
+      if (profileError) profileError.textContent = '';
       const body = {
         displayName: editDisplayName.value,
         bio: editBio.value,
@@ -714,9 +741,10 @@ export const Home: FC<HomeProps> = async ({
         profileCancelBtn.style.display = 'none';
         profileSaveBtn.style.display = 'none';
         editingProfile = false;
+        if (profileError) profileError.textContent = '';
         if (editPassword) editPassword.value = '';
       } else {
-        alert('Failed to update profile.');
+        if (profileError) profileError.textContent = 'Failed to update profile.';
       }
     });
   }
@@ -777,6 +805,16 @@ export const Home: FC<HomeProps> = async ({
       // Move the Post button to the bottom
       threadComposer.parentNode.appendChild(postSubmitBtn);
       textarea.focus();
+    });
+  }
+
+  // Make Enter in password input trigger login button
+  if (pwInput && authBtn) {
+    pwInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        authBtn.click();
+      }
     });
   }
 })();
