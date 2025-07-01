@@ -551,32 +551,60 @@ export const Home: FC<HomeProps> = async ({
                   Permalink
                 </a>
                 {/* Like, Repost, Reply buttons (UI only) */}
-                <button
-                  type="button"
-                  class="secondary"
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    color: "#c00",
-                  }}
-                  title="Like"
+                <form
+                  method="post"
+                  action="/like"
+                  style={{ display: "inline" }}
                 >
-                  ❤️ 0
-                </button>
-                <button
-                  type="button"
-                  class="secondary"
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    color: "#0ac",
-                  }}
-                  title="Repost"
+                  <input type="hidden" name="postId" value={String(post._id)} />
+                  {isRemote && post.objectId && (
+                    <input
+                      type="hidden"
+                      name="objectId"
+                      value={String(post.objectId)}
+                    />
+                  )}
+                  <button
+                    type="submit"
+                    class="secondary"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "#c00",
+                    }}
+                    title="Like"
+                  >
+                    ❤️ {post.likes?.length || 0}
+                  </button>
+                </form>
+                <form
+                  method="post"
+                  action="/repost"
+                  style={{ display: "inline" }}
                 >
-                  🔄 0
-                </button>
+                  <input type="hidden" name="postId" value={String(post._id)} />
+                  {isRemote && post.objectId && (
+                    <input
+                      type="hidden"
+                      name="objectId"
+                      value={String(post.objectId)}
+                    />
+                  )}
+                  <button
+                    type="submit"
+                    class="secondary"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "#0ac",
+                    }}
+                    title="Repost"
+                  >
+                    🔄 {post.reposts?.length || 0}
+                  </button>
+                </form>
                 <button
                   type="button"
                   class="secondary reply-btn"
@@ -993,32 +1021,52 @@ export const PostView: FC<
           }}
         >
           {/* Like, Repost, Reply buttons (UI only) */}
-          <button
-            type="button"
-            class="secondary"
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              color: "#c00",
-            }}
-            title="Like"
-          >
-            ❤️ 0
-          </button>
-          <button
-            type="button"
-            class="secondary"
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              color: "#0ac",
-            }}
-            title="Repost"
-          >
-            🔄 0
-          </button>
+          <form method="post" action="/like" style={{ display: "inline" }}>
+            <input type="hidden" name="postId" value={String(post._id)} />
+            {post.remote && post.objectId && (
+              <input
+                type="hidden"
+                name="objectId"
+                value={String(post.objectId)}
+              />
+            )}
+            <button
+              type="submit"
+              class="secondary"
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "#c00",
+              }}
+              title="Like"
+            >
+              ❤️ {post.likes?.length || 0}
+            </button>
+          </form>
+          <form method="post" action="/repost" style={{ display: "inline" }}>
+            <input type="hidden" name="postId" value={String(post._id)} />
+            {post.remote && post.objectId && (
+              <input
+                type="hidden"
+                name="objectId"
+                value={String(post.objectId)}
+              />
+            )}
+            <button
+              type="submit"
+              class="secondary"
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "#0ac",
+              }}
+              title="Repost"
+            >
+              🔄 {post.reposts?.length || 0}
+            </button>
+          </form>
           <button
             type="button"
             class="secondary reply-btn"

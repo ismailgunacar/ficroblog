@@ -540,4 +540,101 @@ app.get("/users/:username/following", async (c) => {
   );
 });
 
+// Like a post
+app.post("/like", async (c) => {
+  const user = await User.findOne().exec();
+  if (!user) return c.redirect("/setup");
+  const form = await c.req.formData();
+  const postId = form.get("postId")?.toString();
+  const objectId = form.get("objectId")?.toString();
+  if (!postId) return c.redirect("/");
+  const post = await Post.findById(postId).exec();
+  if (!post) return c.redirect("/");
+  const actorUrl = `https://${c.req.header("host")}/users/${user.username}`;
+  if (post.likes?.includes(actorUrl))
+    return c.redirect(c.req.header("referer") || "/");
+  post.likes = post.likes || [];
+  post.likes.push(actorUrl);
+  await post.save();
+  // Federation: send Like activity
+  const ctx = fedi.createContext(c.req.raw, undefined);
+  const publicUrl = `https://${c.req.header("host")}`;
+  const targetObject = objectId
+    ? new URL(objectId)
+    : new URL(`/users/${user.username}/posts/${post._id}`, publicUrl);
+  // If remote, send to remote author; if local, send to followers
+  if (post.remote && post.author) {
+    // Remote post: send Like to remote author
+    await ctx.sendActivity(
+      { identifier: user.username },
+      { id: new URL(post.author), inboxId: new URL(`${post.author}/inbox`) },
+      {
+        "@context": "https://www.w3.org/ns/activitystreams",
+        type: "Like",
+        id: new URL(`#like-${Date.now()}`, actorUrl),
+        actor: actorUrl,
+        object: targetObject,
+      },
+    );
+  } else {
+    // Local post: federate Like to followers
+    await ctx.sendActivity({ identifier: user.username }, "followers", {
+      "@context": "https://www.w3.org/ns/activitystreams",
+      type: "Like",
+      id: new URL(`#like-${Date.now()}`, actorUrl),
+      actor: actorUrl,
+      object: targetObject,
+    });
+  }
+  return c.redirect(c.req.header("referer") || "/");
+});
+
+// Repost (Announce) a post
+app.post("/repost", async (c) => {
+  const user = await User.findOne().exec();
+  if (!user) return c.redirect("/setup");
+  const form = await c.req.formData();
+  const postId = form.get("postId")?.toString();
+  const objectId = form.get("objectId")?.toString();
+  if (!postId) return c.redirect("/");
+  const post = await Post.findById(postId).exec();
+  if (!post) return c.redirect("/");
+  const actorUrl = `https://${c.req.header("host")}/users/${user.username}`;
+  if (post.reposts?.includes(actorUrl))
+    return c.redirect(c.req.header("referer") || "/");
+  post.reposts = post.reposts || [];
+  post.reposts.push(actorUrl);
+  await post.save();
+  // Federation: send Announce activity
+  const ctx = fedi.createContext(c.req.raw, undefined);
+  const publicUrl = `https://${c.req.header("host")}`;
+  const targetObject = objectId
+    ? new URL(objectId)
+    : new URL(`/users/${user.username}/posts/${post._id}`, publicUrl);
+  if (post.remote && post.author) {
+    // Remote post: send Announce to remote author
+    await ctx.sendActivity(
+      { identifier: user.username },
+      { id: new URL(post.author), inboxId: new URL(`${post.author}/inbox`) },
+      {
+        "@context": "https://www.w3.org/ns/activitystreams",
+        type: "Announce",
+        id: new URL(`#announce-${Date.now()}`, actorUrl),
+        actor: actorUrl,
+        object: targetObject,
+      },
+    );
+  } else {
+    // Local post: federate Announce to followers
+    await ctx.sendActivity({ identifier: user.username }, "followers", {
+      "@context": "https://www.w3.org/ns/activitystreams",
+      type: "Announce",
+      id: new URL(`#announce-${Date.now()}`, actorUrl),
+      actor: actorUrl,
+      object: targetObject,
+    });
+  }
+  return c.redirect(c.req.header("referer") || "/");
+});
+
 export default app;
