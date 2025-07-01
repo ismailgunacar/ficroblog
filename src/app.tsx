@@ -252,7 +252,7 @@ app.post("/users/:username/posts", async (c) => {
     attribution: new URL(`/users/${username}`, publicUrl),
     content: post.content,
     mediaType: "text/html",
-    to: ["https://www.w3.org/ns/activitystreams#Public"],
+    to: new URL("https://www.w3.org/ns/activitystreams#Public"),
   });
 
   logger.info(`Sending Create activity to followers for post ${post._id}`);
@@ -271,7 +271,7 @@ app.post("/users/:username/posts", async (c) => {
 
   logger.info(`Successfully sent Create activity to followers`);
 
-  return c.redirect(`/users/${username}/posts/${post._id}`);
+  return c.redirect("/");
 });
 
 // Post detail page

@@ -155,9 +155,29 @@ export const Home: FC<HomeProps> = async ({
                 )}
               </strong>
               <div dangerouslySetInnerHTML={{ __html: post.content }} />
-              <time dateTime={new Date(post.createdAt).toISOString()}>
-                {new Date(post.createdAt).toLocaleString()}
-              </time>
+              <div
+                style={{
+                  fontSize: "0.9em",
+                  color: "#666",
+                  marginTop: "0.5rem",
+                }}
+              >
+                <time dateTime={new Date(post.createdAt).toISOString()}>
+                  {new Date(post.createdAt).toLocaleString()}
+                </time>
+                {!post.remote && (
+                  <>
+                    {" "}
+                    &middot;{" "}
+                    <a
+                      href={`/users/${post.author}/posts/${post._id}`}
+                      class="secondary"
+                    >
+                      permalink
+                    </a>
+                  </>
+                )}
+              </div>
             </li>
           ))}
         </ul>
