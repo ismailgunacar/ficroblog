@@ -27,7 +27,7 @@ const keyCache = new Map<
   Array<{ privateKey: CryptoKey; publicKey: CryptoKey }>
 >();
 
-const PUBLIC_URL = process.env.PUBLIC_URL || "http://localhost:8000";
+const PUBLIC_URL = process.env.PUBLIC_URL || "https://localhost:8000";
 
 const federation = createFederation({
   kv: new MemoryKvStore(),
