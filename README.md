@@ -1,4 +1,4 @@
-# Fongoblog - "Wendy"
+# Fongoblog
 
 A single-user federated microblog built with Node.js, designed for simplicity and easy deployment on MongoDB Atlas.
 
@@ -26,7 +26,7 @@ A single-user federated microblog built with Node.js, designed for simplicity an
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd fongoblog-wendy
+   cd fongoblog
    ```
 
 2. **Install dependencies**
@@ -38,7 +38,7 @@ A single-user federated microblog built with Node.js, designed for simplicity an
    Create a `.env` file in the root directory:
    ```env
    MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/fongoblog
-   PORT=3000
+   
    ```
 
 4. **Start the server**
