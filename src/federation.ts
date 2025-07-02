@@ -1,11 +1,13 @@
 import {
   Accept,
+  Announce,
   type Context,
   Create,
   Delete,
   Endpoints,
   Follow as FediFollow,
   Image,
+  Like,
   Note,
   PUBLIC_COLLECTION,
   Person,
@@ -17,7 +19,14 @@ import {
 import { InProcessMessageQueue, MemoryKvStore } from "@fedify/fedify";
 import { getLogger } from "@logtape/logtape";
 import { connectDB } from "./db.js";
-import { Follow, Following, Post, User } from "./models.js";
+import {
+  Announce as AnnounceModel,
+  Follow,
+  Following,
+  Like as LikeModel,
+  Post,
+  User,
+} from "./models.js";
 
 const logger = getLogger("wendy");
 
@@ -32,7 +41,6 @@ const keyCache = new Map<
 const federation = createFederation({
   kv: new MemoryKvStore(),
   queue: new InProcessMessageQueue(),
-  trustProxy: true,
 });
 
 federation
@@ -142,52 +150,120 @@ federation
       `Successfully sent Accept activity to ${actorObj.inboxId?.href || "unknown inbox"}`,
     );
   })
-  .on(Undo, async (ctx, undo) => {
-    const object = await undo.getObject();
-    if (!(object instanceof FediFollow)) return;
-    if (!undo.actorId || !object.objectId) return;
-    const parsed = ctx.parseUri(object.objectId);
-    if (!parsed || parsed.type !== "actor") return;
-    const following = ctx.getActorUri(parsed.identifier).href;
-    const follower = undo.actorId.href;
-
-    logger.info(`Received unfollow request from ${follower} to ${following}`);
-    await Follow.deleteOne({ following, follower });
-    logger.info(`Removed follower ${follower} from ${following}`);
-  })
-  .on(Accept, async (ctx, accept) => {
-    logger.info(`Received Accept activity from ${accept.actorId?.href}`);
-
-    // Get the object being accepted
-    const object = await accept.getObject();
-    if (!object) {
-      logger.error(`Could not get object from Accept activity`);
+  .on(Like, async (ctx, like) => {
+    if (!like.actorId || !like.objectId) return;
+    logger.info(
+      `Received Like activity from ${like.actorId.href} for ${like.objectId.href}`,
+    );
+    // Extract post ID from the object URL
+    const objectUrl = like.objectId.href;
+    const postIdMatch = objectUrl.match(/\/posts\/([^\/]+)$/);
+    if (!postIdMatch) {
+      logger.warn(`Invalid object URI for like: ${objectUrl}`);
       return;
     }
-
-    // Check if it's accepting a Follow activity
-    if (object instanceof FediFollow) {
-      const following = object.objectId?.href;
-      const follower = object.actorId?.href;
-
-      if (following && follower) {
-        logger.info(`Accepting follow from ${follower} to ${following}`);
-
-        // Update the following relationship to mark it as accepted
-        await Following.updateOne(
-          { follower, following },
-          { $set: { accepted: true, acceptedAt: new Date() } },
-          { upsert: true },
-        );
-
-        logger.info(
-          `Successfully processed Accept for follow from ${follower} to ${following}`,
-        );
-      }
-    } else {
-      logger.info(
-        `Accept activity for non-Follow object: ${object.constructor.name}`,
+    const postId = postIdMatch[1];
+    try {
+      // Store the like
+      await LikeModel.updateOne(
+        { actor: like.actorId.href, object: postId },
+        {
+          $set: { actor: like.actorId.href, object: postId },
+          $setOnInsert: { createdAt: new Date() },
+        },
+        { upsert: true },
       );
+      logger.info(`Stored like from ${like.actorId.href} for post ${postId}`);
+    } catch (error) {
+      logger.error(`Failed to store like: ${error}`);
+    }
+  })
+  .on(Announce, async (ctx, announce) => {
+    if (!announce.actorId || !announce.objectId) return;
+    logger.info(
+      `Received Announce activity from ${announce.actorId.href} for ${announce.objectId.href}`,
+    );
+    // Extract post ID from the object URL
+    const objectUrl = announce.objectId.href;
+    const postIdMatch = objectUrl.match(/\/posts\/([^\/]+)$/);
+    if (!postIdMatch) {
+      logger.warn(`Invalid object URI for announce: ${objectUrl}`);
+      return;
+    }
+    const postId = postIdMatch[1];
+    try {
+      // Store the announce
+      await AnnounceModel.updateOne(
+        { actor: announce.actorId.href, object: postId },
+        {
+          $set: { actor: announce.actorId.href, object: postId },
+          $setOnInsert: { createdAt: new Date() },
+        },
+        { upsert: true },
+      );
+      logger.info(
+        `Stored announce from ${announce.actorId.href} for post ${postId}`,
+      );
+    } catch (error) {
+      logger.error(`Failed to store announce: ${error}`);
+    }
+  })
+  .on(Undo, async (ctx, undo) => {
+    const object = await undo.getObject();
+    if (!undo.actorId) return;
+    // Handle Undo(Like)
+    if (object instanceof Like) {
+      if (!object.objectId) return;
+      const objectUrl = object.objectId.href;
+      const postIdMatch = objectUrl.match(/\/posts\/([^\/]+)$/);
+      if (!postIdMatch) return;
+      const postId = postIdMatch[1];
+      logger.info(
+        `Received Undo(Like) from ${undo.actorId.href} for post ${postId}`,
+      );
+      try {
+        await LikeModel.deleteOne({ actor: undo.actorId.href, object: postId });
+        logger.info(
+          `Removed like from ${undo.actorId.href} for post ${postId}`,
+        );
+      } catch (error) {
+        logger.error(`Failed to remove like: ${error}`);
+      }
+      return;
+    }
+    // Handle Undo(Announce)
+    if (object instanceof Announce) {
+      if (!object.objectId) return;
+      const objectUrl = object.objectId.href;
+      const postIdMatch = objectUrl.match(/\/posts\/([^\/]+)$/);
+      if (!postIdMatch) return;
+      const postId = postIdMatch[1];
+      logger.info(
+        `Received Undo(Announce) from ${undo.actorId.href} for post ${postId}`,
+      );
+      try {
+        await AnnounceModel.deleteOne({
+          actor: undo.actorId.href,
+          object: postId,
+        });
+        logger.info(
+          `Removed announce from ${undo.actorId.href} for post ${postId}`,
+        );
+      } catch (error) {
+        logger.error(`Failed to remove announce: ${error}`);
+      }
+      return;
+    }
+    // Handle Undo(Follow)
+    if (object instanceof FediFollow) {
+      if (!object.objectId) return;
+      const parsed = ctx.parseUri(object.objectId);
+      if (!parsed || parsed.type !== "actor") return;
+      const following = ctx.getActorUri(parsed.identifier).href;
+      const follower = undo.actorId.href;
+      logger.info(`Received unfollow request from ${follower} to ${following}`);
+      await Follow.deleteOne({ following, follower });
+      logger.info(`Removed follower ${follower} from ${following}`);
     }
   })
   .on(Create, async (ctx, create) => {

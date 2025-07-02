@@ -4,7 +4,7 @@ This is a **single-user, self-hosted federated microblog**. The goal is to follo
 
 > **Note:** This project will **never** support multiple users or accounts. All endpoints, federation, and authentication are for a single user only.
 
-Make sure to write concise, modular code.
+Make sure to write concise, modular code. Try to reference the Fedify documentation as much as you can for proper implementations.
 
 ## Project Setup ✅
 - [x] Initialize Fedify project with `fedify init`

@@ -38,6 +38,80 @@ export const Layout: FC = (props) => (
     </head>
     <body>
       <main class="container">{props.children}</main>
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+(function() {
+  function updateStats(postId) {
+    fetch('/api/post/' + postId + '/stats').then(r => r.json()).then(data => {
+      if (data.ok) {
+        var likeBtn = document.querySelector('[data-like-btn][data-post-id="' + postId + '"]');
+        var announceBtn = document.querySelector('[data-announce-btn][data-post-id="' + postId + '"]');
+        if (likeBtn) {
+          likeBtn.querySelector('.like-count').textContent = data.likeCount;
+          if (data.liked) likeBtn.classList.add('liked');
+          else likeBtn.classList.remove('liked');
+        }
+        if (announceBtn) {
+          announceBtn.querySelector('.announce-count').textContent = data.announceCount;
+          if (data.announced) announceBtn.classList.add('announced');
+          else announceBtn.classList.remove('announced');
+        }
+      }
+    });
+  }
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('[data-like-btn]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var postId = btn.getAttribute('data-post-id');
+        var liked = btn.classList.contains('liked');
+        fetch(liked ? '/api/unlike' : '/api/like', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ postId })
+        }).then(r => r.json()).then(data => {
+          if (data.ok) {
+            if ('liked' in data) {
+              if (data.liked) btn.classList.add('liked');
+              else btn.classList.remove('liked');
+            } else {
+              btn.classList.toggle('liked');
+            }
+            updateStats(postId);
+          }
+        });
+      });
+      // Initial count and state
+      updateStats(btn.getAttribute('data-post-id'));
+    });
+    document.querySelectorAll('[data-announce-btn]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var postId = btn.getAttribute('data-post-id');
+        var announced = btn.classList.contains('announced');
+        fetch(announced ? '/api/unannounce' : '/api/announce', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ postId })
+        }).then(r => r.json()).then(data => {
+          if (data.ok) {
+            if ('announced' in data) {
+              if (data.announced) btn.classList.add('announced');
+              else btn.classList.remove('announced');
+            } else {
+              btn.classList.toggle('announced');
+            }
+            updateStats(postId);
+          }
+        });
+      });
+      // Initial count and state
+      updateStats(btn.getAttribute('data-post-id'));
+    });
+  });
+})();
+        `,
+        }}
+      />
     </body>
   </html>
 );
@@ -487,21 +561,7 @@ export const Home: FC<HomeProps> = async ({
               marginBottom: "1.5rem",
             }}
           >
-            {/* Avatar */}
-            <div style={{ flex: "0 0 48px" }}>
-              <img
-                src={avatarUrl || ""}
-                alt="Avatar"
-                style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: "50%",
-                  objectFit: "cover",
-                  background: "#eee",
-                }}
-              />
-            </div>
-            {/* Post content and meta */}
+            {/* Post content and meta (avatar removed) */}
             <div style={{ flex: 1 }}>
               <div
                 style={{
@@ -554,6 +614,8 @@ export const Home: FC<HomeProps> = async ({
                 <button
                   type="button"
                   class="secondary"
+                  data-like-btn
+                  data-post-id={post._id}
                   style={{
                     background: "none",
                     border: "none",
@@ -562,11 +624,13 @@ export const Home: FC<HomeProps> = async ({
                   }}
                   title="Like"
                 >
-                  ❤️ 0
+                  ❤️ <span class="like-count">0</span>
                 </button>
                 <button
                   type="button"
                   class="secondary"
+                  data-announce-btn
+                  data-post-id={post._id}
                   style={{
                     background: "none",
                     border: "none",
@@ -575,7 +639,7 @@ export const Home: FC<HomeProps> = async ({
                   }}
                   title="Repost"
                 >
-                  🔄 0
+                  🔄 <span class="announce-count">0</span>
                 </button>
                 <button
                   type="button"
@@ -938,21 +1002,7 @@ export const PostView: FC<
         marginBottom: "1.5rem",
       }}
     >
-      {/* Avatar */}
-      <div style={{ flex: "0 0 48px" }}>
-        <img
-          src={user?.avatarUrl || ""}
-          alt="Avatar"
-          style={{
-            width: 48,
-            height: 48,
-            borderRadius: "50%",
-            objectFit: "cover",
-            background: "#eee",
-          }}
-        />
-      </div>
-      {/* Post content and meta */}
+      {/* Post content and meta (avatar removed) */}
       <div style={{ flex: 1 }}>
         <div
           style={{
@@ -996,6 +1046,8 @@ export const PostView: FC<
           <button
             type="button"
             class="secondary"
+            data-like-btn
+            data-post-id={post._id}
             style={{
               background: "none",
               border: "none",
@@ -1004,11 +1056,13 @@ export const PostView: FC<
             }}
             title="Like"
           >
-            ❤️ 0
+            ❤️ <span class="like-count">0</span>
           </button>
           <button
             type="button"
             class="secondary"
+            data-announce-btn
+            data-post-id={post._id}
             style={{
               background: "none",
               border: "none",
@@ -1017,7 +1071,7 @@ export const PostView: FC<
             }}
             title="Repost"
           >
-            🔄 0
+            🔄 <span class="announce-count">0</span>
           </button>
           <button
             type="button"

@@ -1,4 +1,4 @@
-import { Create, Follow, Note, Undo } from "@fedify/fedify";
+import { Announce, Create, Follow, Like, Note, Undo } from "@fedify/fedify";
 import { federation } from "@fedify/fedify/x/hono";
 import { getLogger } from "@logtape/logtape";
 import bcrypt from "bcrypt";
@@ -8,7 +8,14 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { stringifyEntities } from "stringify-entities";
 import { connectDB } from "./db.js";
 import fedi from "./federation.js";
-import { Follow as FollowModel, Following, Post, User } from "./models.js";
+import {
+  Announce as AnnounceModel,
+  Follow as FollowModel,
+  Following,
+  Like as LikeModel,
+  Post,
+  User,
+} from "./models.js";
 import {
   FollowerList,
   FollowingList,
@@ -538,6 +545,296 @@ app.get("/users/:username/following", async (c) => {
       <FollowingList following={following} />
     </Layout>,
   );
+});
+
+// Like a post
+app.post("/api/like", async (c) => {
+  if (!c.get("sessionUser")) {
+    return c.json({ ok: false, error: "Unauthorized" }, 401);
+  }
+
+  const { postId } = await c.req.json();
+  if (!postId || typeof postId !== "string") {
+    return c.json({ ok: false, error: "Invalid postId" }, 400);
+  }
+
+  const user = await User.findOne().exec();
+  if (!user) return c.json({ ok: false, error: "User not found" }, 404);
+
+  // Check if post exists
+  const post = await Post.findById(postId).exec();
+  if (!post) return c.json({ ok: false, error: "Post not found" }, 404);
+
+  const actorUrl = `https://${c.req.header("host")}/users/${user.username}`;
+  const objectUrl = `https://${c.req.header("host")}/users/${post.author}/posts/${postId}`;
+
+  try {
+    // Check if already liked
+    const existingLike = await LikeModel.findOne({
+      actor: actorUrl,
+      object: postId,
+    }).exec();
+    if (existingLike) {
+      return c.json({ ok: false, error: "Already liked" }, 400);
+    }
+
+    // Store the like
+    await LikeModel.create({
+      actor: actorUrl,
+      object: postId,
+    });
+
+    // Send Like activity to followers
+    const ctx = fedi.createContext(c.req.raw, undefined);
+    const publicUrl = `https://${c.req.header("host")}`;
+
+    await ctx.sendActivity(
+      { identifier: user.username },
+      "followers",
+      new Like({
+        id: new URL(
+          `#like-${Date.now()}`,
+          `${publicUrl}/users/${user.username}`,
+        ),
+        actor: new URL(actorUrl),
+        object: new URL(objectUrl),
+      }),
+    );
+
+    // Get updated like count
+    const likeCount = await LikeModel.countDocuments({ object: postId });
+
+    return c.json({ ok: true, likeCount });
+  } catch (error) {
+    logger.error(`Failed to like post: ${error}`);
+    return c.json({ ok: false, error: "Failed to like post" }, 500);
+  }
+});
+
+// Unlike a post
+app.post("/api/unlike", async (c) => {
+  if (!c.get("sessionUser")) {
+    return c.json({ ok: false, error: "Unauthorized" }, 401);
+  }
+
+  const { postId } = await c.req.json();
+  if (!postId || typeof postId !== "string") {
+    return c.json({ ok: false, error: "Invalid postId" }, 400);
+  }
+
+  const user = await User.findOne().exec();
+  if (!user) return c.json({ ok: false, error: "User not found" }, 404);
+
+  // Check if post exists
+  const post = await Post.findById(postId).exec();
+  if (!post) return c.json({ ok: false, error: "Post not found" }, 404);
+
+  const actorUrl = `https://${c.req.header("host")}/users/${user.username}`;
+  const objectUrl = `https://${c.req.header("host")}/users/${post.author}/posts/${postId}`;
+
+  try {
+    // Check if liked
+    const existingLike = await LikeModel.findOne({
+      actor: actorUrl,
+      object: postId,
+    }).exec();
+    if (!existingLike) {
+      return c.json({ ok: false, error: "Not liked" }, 400);
+    }
+
+    // Remove the like
+    await LikeModel.deleteOne({ actor: actorUrl, object: postId });
+
+    // Send Undo(Like) activity to followers
+    const ctx = fedi.createContext(c.req.raw, undefined);
+    const publicUrl = `https://${c.req.header("host")}`;
+
+    await ctx.sendActivity(
+      { identifier: user.username },
+      "followers",
+      new Undo({
+        id: new URL(
+          `#undo-like-${Date.now()}`,
+          `${publicUrl}/users/${user.username}`,
+        ),
+        actor: new URL(actorUrl),
+        object: new Like({
+          actor: new URL(actorUrl),
+          object: new URL(objectUrl),
+        }),
+      }),
+    );
+
+    // Get updated like count
+    const likeCount = await LikeModel.countDocuments({ object: postId });
+
+    return c.json({ ok: true, likeCount });
+  } catch (error) {
+    logger.error(`Failed to unlike post: ${error}`);
+    return c.json({ ok: false, error: "Failed to unlike post" }, 500);
+  }
+});
+
+// Announce a post
+app.post("/api/announce", async (c) => {
+  if (!c.get("sessionUser")) {
+    return c.json({ ok: false, error: "Unauthorized" }, 401);
+  }
+
+  const { postId } = await c.req.json();
+  if (!postId || typeof postId !== "string") {
+    return c.json({ ok: false, error: "Invalid postId" }, 400);
+  }
+
+  const user = await User.findOne().exec();
+  if (!user) return c.json({ ok: false, error: "User not found" }, 404);
+
+  // Check if post exists
+  const post = await Post.findById(postId).exec();
+  if (!post) return c.json({ ok: false, error: "Post not found" }, 404);
+
+  const actorUrl = `https://${c.req.header("host")}/users/${user.username}`;
+  const objectUrl = `https://${c.req.header("host")}/users/${post.author}/posts/${postId}`;
+
+  try {
+    // Check if already announced
+    const existingAnnounce = await AnnounceModel.findOne({
+      actor: actorUrl,
+      object: postId,
+    }).exec();
+    if (existingAnnounce) {
+      return c.json({ ok: false, error: "Already announced" }, 400);
+    }
+
+    // Store the announce
+    await AnnounceModel.create({
+      actor: actorUrl,
+      object: postId,
+    });
+
+    // Send Announce activity to followers
+    const ctx = fedi.createContext(c.req.raw, undefined);
+    const publicUrl = `https://${c.req.header("host")}`;
+
+    await ctx.sendActivity(
+      { identifier: user.username },
+      "followers",
+      new Announce({
+        id: new URL(
+          `#announce-${Date.now()}`,
+          `${publicUrl}/users/${user.username}`,
+        ),
+        actor: new URL(actorUrl),
+        object: new URL(objectUrl),
+      }),
+    );
+
+    // Get updated announce count
+    const announceCount = await AnnounceModel.countDocuments({
+      object: postId,
+    });
+
+    return c.json({ ok: true, announceCount });
+  } catch (error) {
+    logger.error(`Failed to announce post: ${error}`);
+    return c.json({ ok: false, error: "Failed to announce post" }, 500);
+  }
+});
+
+// Unannounce a post
+app.post("/api/unannounce", async (c) => {
+  if (!c.get("sessionUser")) {
+    return c.json({ ok: false, error: "Unauthorized" }, 401);
+  }
+
+  const { postId } = await c.req.json();
+  if (!postId || typeof postId !== "string") {
+    return c.json({ ok: false, error: "Invalid postId" }, 400);
+  }
+
+  const user = await User.findOne().exec();
+  if (!user) return c.json({ ok: false, error: "User not found" }, 404);
+
+  // Check if post exists
+  const post = await Post.findById(postId).exec();
+  if (!post) return c.json({ ok: false, error: "Post not found" }, 404);
+
+  const actorUrl = `https://${c.req.header("host")}/users/${user.username}`;
+  const objectUrl = `https://${c.req.header("host")}/users/${post.author}/posts/${postId}`;
+
+  try {
+    // Check if announced
+    const existingAnnounce = await AnnounceModel.findOne({
+      actor: actorUrl,
+      object: postId,
+    }).exec();
+    if (!existingAnnounce) {
+      return c.json({ ok: false, error: "Not announced" }, 400);
+    }
+
+    // Remove the announce
+    await AnnounceModel.deleteOne({ actor: actorUrl, object: postId });
+
+    // Send Undo(Announce) activity to followers
+    const ctx = fedi.createContext(c.req.raw, undefined);
+    const publicUrl = `https://${c.req.header("host")}`;
+
+    await ctx.sendActivity(
+      { identifier: user.username },
+      "followers",
+      new Undo({
+        id: new URL(
+          `#undo-announce-${Date.now()}`,
+          `${publicUrl}/users/${user.username}`,
+        ),
+        actor: new URL(actorUrl),
+        object: new Announce({
+          actor: new URL(actorUrl),
+          object: new URL(objectUrl),
+        }),
+      }),
+    );
+
+    // Get updated announce count
+    const announceCount = await AnnounceModel.countDocuments({
+      object: postId,
+    });
+
+    return c.json({ ok: true, announceCount });
+  } catch (error) {
+    logger.error(`Failed to unannounce post: ${error}`);
+    return c.json({ ok: false, error: "Failed to unannounce post" }, 500);
+  }
+});
+
+// Get like and announce counts for a post
+app.get("/api/post/:postId/stats", async (c) => {
+  const postId = c.req.param("postId");
+  if (!postId || typeof postId !== "string") {
+    return c.json({ ok: false, error: "Invalid postId" }, 400);
+  }
+
+  try {
+    const likeCount = await LikeModel.countDocuments({ object: postId });
+    const announceCount = await AnnounceModel.countDocuments({
+      object: postId,
+    });
+    let liked = false;
+    let announced = false;
+    const user = await User.findOne().exec();
+    if (user && c.get("sessionUser")) {
+      const actorUrl = `https://${c.req.header("host")}/users/${user.username}`;
+      liked = !!(await LikeModel.findOne({ actor: actorUrl, object: postId }));
+      announced = !!(await AnnounceModel.findOne({
+        actor: actorUrl,
+        object: postId,
+      }));
+    }
+    return c.json({ ok: true, likeCount, announceCount, liked, announced });
+  } catch (error) {
+    logger.error(`Failed to get post stats: ${error}`);
+    return c.json({ ok: false, error: "Failed to get post stats" }, 500);
+  }
 });
 
 export default app;

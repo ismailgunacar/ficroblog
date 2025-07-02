@@ -103,3 +103,37 @@ const KeySchema = new Schema<IKey>({
 KeySchema.index({ user_id: 1, type: 1 }, { unique: true });
 
 export const Key = model<IKey>("Key", KeySchema);
+
+export interface ILike extends Document {
+  actor: string; // actor URL who liked
+  object: string; // post ID that was liked
+  createdAt: Date;
+}
+
+const LikeSchema = new Schema<ILike>({
+  actor: { type: String, required: true },
+  object: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now },
+});
+
+// Ensure unique likes per actor per post
+LikeSchema.index({ actor: 1, object: 1 }, { unique: true });
+
+export const Like = model<ILike>("Like", LikeSchema);
+
+export interface IAnnounce extends Document {
+  actor: string; // actor URL who announced
+  object: string; // post ID that was announced
+  createdAt: Date;
+}
+
+const AnnounceSchema = new Schema<IAnnounce>({
+  actor: { type: String, required: true },
+  object: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now },
+});
+
+// Ensure unique announces per actor per post
+AnnounceSchema.index({ actor: 1, object: 1 }, { unique: true });
+
+export const Announce = model<IAnnounce>("Announce", AnnounceSchema);
