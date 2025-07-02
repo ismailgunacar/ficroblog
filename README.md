@@ -57,7 +57,7 @@ A single-user federated microblog built with Node.js, designed for simplicity an
 - **Database**: MongoDB with Mongoose ODM
 - **Federation**: Fedify library for ActivityPub
 - **Frontend**: JSX with vanilla JavaScript
-- **Styling**: CSS with modern design principles
+- **Styling**: PicoCSS with modern design principles
 
 ### Key Components
 
