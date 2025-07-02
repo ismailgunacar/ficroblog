@@ -273,7 +273,7 @@ export const Home: FC<HomeProps> = async ({
               />
             )}
             <div>
-              <h1 id="profile-displayName">
+              <h1 id="profile-displayName" style={{ marginBottom: "0px" }}>
                 <a href="/">{user.displayName}</a>
               </h1>
               <p>
@@ -289,14 +289,11 @@ export const Home: FC<HomeProps> = async ({
                   {following === 1 ? "1 following" : `${following} following`}
                 </a>
               </p>
-              <p
-                id="profile-bio"
-                style={{ marginTop: "0.5rem", color: "#666" }}
-              >
-                {user.bio || ""}
-              </p>
             </div>
           </div>
+          <p id="profile-bio" style={{ marginTop: "0.5rem", color: "#666" }}>
+            {user.bio || ""}
+          </p>
         </div>
         <form
           id="profile-edit-form"
@@ -1143,7 +1140,7 @@ export const PostPage: FC<PostPageProps> = (props) => (
             />
           )}
           <div>
-            <h1 id="profile-displayName">
+            <h1 id="profile-displayName" style={{ marginBottom: "0px" }}>
               <a href="/">{props.user?.displayName || props.name}</a>
             </h1>
             <p>
@@ -1170,11 +1167,11 @@ export const PostPage: FC<PostPageProps> = (props) => (
                   : `${props.following} following`}
               </a>
             </p>
-            <p id="profile-bio" style={{ marginTop: "0.5rem", color: "#666" }}>
-              {props.user?.bio || ""}
-            </p>
           </div>
         </div>
+        <p id="profile-bio" style={{ marginTop: "0.5rem", color: "#666" }}>
+          {props.user?.bio || ""}
+        </p>
       </div>
     </article>
     <PostView post={props.post} user={props.user} domain={props.domain} />
