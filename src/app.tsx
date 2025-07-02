@@ -584,10 +584,11 @@ app.post("/api/like", async (c) => {
       object: postId,
     });
 
-    // Send Like activity to followers
+    // Send Like activity to followers and original author
     const ctx = fedi.createContext(c.req.raw, undefined);
     const publicUrl = `https://${c.req.header("host")}`;
 
+    // Send to followers
     await ctx.sendActivity(
       { identifier: user.username },
       "followers",
@@ -600,6 +601,29 @@ app.post("/api/like", async (c) => {
         object: new URL(objectUrl),
       }),
     );
+
+    // Send to original post author if it's a remote post
+    if (post.remote && post.remoteAuthorUrl) {
+      try {
+        const authorUrl = new URL(post.remoteAuthorUrl);
+        const authorInbox = new URL("/inbox", authorUrl.origin);
+
+        await ctx.sendActivity(
+          { identifier: user.username },
+          { id: authorUrl, inboxId: authorInbox },
+          new Like({
+            id: new URL(
+              `#like-${Date.now()}`,
+              `${publicUrl}/users/${user.username}`,
+            ),
+            actor: new URL(actorUrl),
+            object: new URL(objectUrl),
+          }),
+        );
+      } catch (error) {
+        logger.error(`Failed to send like to remote author: ${error}`);
+      }
+    }
 
     // Get updated like count
     const likeCount = await LikeModel.countDocuments({ object: postId });
@@ -645,10 +669,11 @@ app.post("/api/unlike", async (c) => {
     // Remove the like
     await LikeModel.deleteOne({ actor: actorUrl, object: postId });
 
-    // Send Undo(Like) activity to followers
+    // Send Undo(Like) activity to followers and original author
     const ctx = fedi.createContext(c.req.raw, undefined);
     const publicUrl = `https://${c.req.header("host")}`;
 
+    // Send to followers
     await ctx.sendActivity(
       { identifier: user.username },
       "followers",
@@ -664,6 +689,32 @@ app.post("/api/unlike", async (c) => {
         }),
       }),
     );
+
+    // Send to original post author if it's a remote post
+    if (post.remote && post.remoteAuthorUrl) {
+      try {
+        const authorUrl = new URL(post.remoteAuthorUrl);
+        const authorInbox = new URL("/inbox", authorUrl.origin);
+
+        await ctx.sendActivity(
+          { identifier: user.username },
+          { id: authorUrl, inboxId: authorInbox },
+          new Undo({
+            id: new URL(
+              `#undo-like-${Date.now()}`,
+              `${publicUrl}/users/${user.username}`,
+            ),
+            actor: new URL(actorUrl),
+            object: new Like({
+              actor: new URL(actorUrl),
+              object: new URL(objectUrl),
+            }),
+          }),
+        );
+      } catch (error) {
+        logger.error(`Failed to send undo like to remote author: ${error}`);
+      }
+    }
 
     // Get updated like count
     const likeCount = await LikeModel.countDocuments({ object: postId });
@@ -712,10 +763,11 @@ app.post("/api/announce", async (c) => {
       object: postId,
     });
 
-    // Send Announce activity to followers
+    // Send Announce activity to followers and original author
     const ctx = fedi.createContext(c.req.raw, undefined);
     const publicUrl = `https://${c.req.header("host")}`;
 
+    // Send to followers
     await ctx.sendActivity(
       { identifier: user.username },
       "followers",
@@ -728,6 +780,29 @@ app.post("/api/announce", async (c) => {
         object: new URL(objectUrl),
       }),
     );
+
+    // Send to original post author if it's a remote post
+    if (post.remote && post.remoteAuthorUrl) {
+      try {
+        const authorUrl = new URL(post.remoteAuthorUrl);
+        const authorInbox = new URL("/inbox", authorUrl.origin);
+
+        await ctx.sendActivity(
+          { identifier: user.username },
+          { id: authorUrl, inboxId: authorInbox },
+          new Announce({
+            id: new URL(
+              `#announce-${Date.now()}`,
+              `${publicUrl}/users/${user.username}`,
+            ),
+            actor: new URL(actorUrl),
+            object: new URL(objectUrl),
+          }),
+        );
+      } catch (error) {
+        logger.error(`Failed to send announce to remote author: ${error}`);
+      }
+    }
 
     // Get updated announce count
     const announceCount = await AnnounceModel.countDocuments({
@@ -775,10 +850,11 @@ app.post("/api/unannounce", async (c) => {
     // Remove the announce
     await AnnounceModel.deleteOne({ actor: actorUrl, object: postId });
 
-    // Send Undo(Announce) activity to followers
+    // Send Undo(Announce) activity to followers and original author
     const ctx = fedi.createContext(c.req.raw, undefined);
     const publicUrl = `https://${c.req.header("host")}`;
 
+    // Send to followers
     await ctx.sendActivity(
       { identifier: user.username },
       "followers",
@@ -794,6 +870,32 @@ app.post("/api/unannounce", async (c) => {
         }),
       }),
     );
+
+    // Send to original post author if it's a remote post
+    if (post.remote && post.remoteAuthorUrl) {
+      try {
+        const authorUrl = new URL(post.remoteAuthorUrl);
+        const authorInbox = new URL("/inbox", authorUrl.origin);
+
+        await ctx.sendActivity(
+          { identifier: user.username },
+          { id: authorUrl, inboxId: authorInbox },
+          new Undo({
+            id: new URL(
+              `#undo-announce-${Date.now()}`,
+              `${publicUrl}/users/${user.username}`,
+            ),
+            actor: new URL(actorUrl),
+            object: new Announce({
+              actor: new URL(actorUrl),
+              object: new URL(objectUrl),
+            }),
+          }),
+        );
+      } catch (error) {
+        logger.error(`Failed to send undo announce to remote author: ${error}`);
+      }
+    }
 
     // Get updated announce count
     const announceCount = await AnnounceModel.countDocuments({
