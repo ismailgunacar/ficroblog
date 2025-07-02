@@ -578,11 +578,15 @@ app.post("/api/like", async (c) => {
       return c.json({ ok: false, error: "Already liked" }, 400);
     }
 
-    // Store the like
-    await LikeModel.create({
-      actor: actorUrl,
-      object: postId,
-    });
+    // Store the like using upsert for idempotency
+    await LikeModel.updateOne(
+      { actor: actorUrl, object: postId },
+      {
+        $set: { actor: actorUrl, object: postId },
+        $setOnInsert: { createdAt: new Date() },
+      },
+      { upsert: true },
+    );
 
     // Send Like activity to followers and original author
     const ctx = fedi.createContext(c.req.raw, undefined);
@@ -757,11 +761,15 @@ app.post("/api/announce", async (c) => {
       return c.json({ ok: false, error: "Already announced" }, 400);
     }
 
-    // Store the announce
-    await AnnounceModel.create({
-      actor: actorUrl,
-      object: postId,
-    });
+    // Store the announce using upsert for idempotency
+    await AnnounceModel.updateOne(
+      { actor: actorUrl, object: postId },
+      {
+        $set: { actor: actorUrl, object: postId },
+        $setOnInsert: { createdAt: new Date() },
+      },
+      { upsert: true },
+    );
 
     // Send Announce activity to followers and original author
     const ctx = fedi.createContext(c.req.raw, undefined);
