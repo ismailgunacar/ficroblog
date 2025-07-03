@@ -678,10 +678,28 @@ export const Home: FC<HomeProps> = async ({
                     border: "none",
                     cursor: "pointer",
                     color: "#c00",
+                    verticalAlign: "middle",
+                    display: "flex",
+                    alignItems: "center",
+                    padding: 0,
                   }}
                   title="Like"
                 >
-                  ❤️ <span class="like-count">0</span>
+                  <span
+                    style={{
+                      fontSize: "1.1em",
+                      lineHeight: 1,
+                      verticalAlign: "middle",
+                    }}
+                  >
+                    ❤️
+                  </span>
+                  <span
+                    class="like-count"
+                    style={{ marginLeft: 4, verticalAlign: "middle" }}
+                  >
+                    0
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -1124,10 +1142,28 @@ export const PostView: FC<
               border: "none",
               cursor: "pointer",
               color: "#c00",
+              verticalAlign: "middle",
+              display: "flex",
+              alignItems: "center",
+              padding: 0,
             }}
             title="Like"
           >
-            ❤️ <span class="like-count">0</span>
+            <span
+              style={{
+                fontSize: "1.1em",
+                lineHeight: 1,
+                verticalAlign: "middle",
+              }}
+            >
+              ❤️
+            </span>
+            <span
+              class="like-count"
+              style={{ marginLeft: 4, verticalAlign: "middle" }}
+            >
+              0
+            </span>
           </button>
           <button
             type="button"
