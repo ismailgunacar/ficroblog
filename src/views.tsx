@@ -663,7 +663,7 @@ export const Home: FC<HomeProps> = async ({
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "1.5em",
+                  gap: "1.2em",
                   fontSize: "0.98em",
                   color: "#666",
                 }}
@@ -742,7 +742,7 @@ export const Home: FC<HomeProps> = async ({
                   class="secondary"
                   target={isRemote ? "_blank" : undefined}
                   rel={isRemote ? "noopener noreferrer" : undefined}
-                  style={{ textDecoration: "none", marginLeft: "1em" }}
+                  style={{ textDecoration: "none" }}
                 >
                   🔗
                 </a>
@@ -1127,7 +1127,7 @@ export const PostView: FC<
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "1.5em",
+            gap: "1.2em",
             fontSize: "0.98em",
             color: "#666",
           }}
@@ -1206,7 +1206,7 @@ export const PostView: FC<
             class="secondary"
             target={post.remote ? "_blank" : undefined}
             rel={post.remote ? "noopener noreferrer" : undefined}
-            style={{ textDecoration: "none", marginLeft: "1em" }}
+            style={{ textDecoration: "none" }}
           >
             🔗
           </a>
