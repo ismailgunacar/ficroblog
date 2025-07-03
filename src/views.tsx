@@ -663,7 +663,7 @@ export const Home: FC<HomeProps> = async ({
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: "1.2em",
+                  gap: "1.5em",
                   fontSize: "0.98em",
                   color: "#666",
                 }}
@@ -678,28 +678,10 @@ export const Home: FC<HomeProps> = async ({
                     border: "none",
                     cursor: "pointer",
                     color: "#c00",
-                    verticalAlign: "middle",
-                    display: "flex",
-                    alignItems: "center",
-                    padding: 0,
                   }}
                   title="Like"
                 >
-                  <span
-                    style={{
-                      fontSize: "1.1em",
-                      lineHeight: 1,
-                      verticalAlign: "middle",
-                    }}
-                  >
-                    ❤️
-                  </span>
-                  <span
-                    class="like-count"
-                    style={{ marginLeft: 4, verticalAlign: "middle" }}
-                  >
-                    0
-                  </span>
+                  ❤️ <span class="like-count">0</span>
                 </button>
                 <button
                   type="button"
@@ -742,7 +724,7 @@ export const Home: FC<HomeProps> = async ({
                   class="secondary"
                   target={isRemote ? "_blank" : undefined}
                   rel={isRemote ? "noopener noreferrer" : undefined}
-                  style={{ textDecoration: "none" }}
+                  style={{ textDecoration: "none", marginLeft: "1em" }}
                 >
                   🔗
                 </a>
@@ -1127,7 +1109,7 @@ export const PostView: FC<
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "1.2em",
+            gap: "1.5em",
             fontSize: "0.98em",
             color: "#666",
           }}
@@ -1142,28 +1124,10 @@ export const PostView: FC<
               border: "none",
               cursor: "pointer",
               color: "#c00",
-              verticalAlign: "middle",
-              display: "flex",
-              alignItems: "center",
-              padding: 0,
             }}
             title="Like"
           >
-            <span
-              style={{
-                fontSize: "1.1em",
-                lineHeight: 1,
-                verticalAlign: "middle",
-              }}
-            >
-              ❤️
-            </span>
-            <span
-              class="like-count"
-              style={{ marginLeft: 4, verticalAlign: "middle" }}
-            >
-              0
-            </span>
+            ❤️ <span class="like-count">0</span>
           </button>
           <button
             type="button"
@@ -1206,7 +1170,7 @@ export const PostView: FC<
             class="secondary"
             target={post.remote ? "_blank" : undefined}
             rel={post.remote ? "noopener noreferrer" : undefined}
-            style={{ textDecoration: "none" }}
+            style={{ textDecoration: "none", marginLeft: "1em" }}
           >
             🔗
           </a>
