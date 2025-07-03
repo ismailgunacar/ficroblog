@@ -2,6 +2,69 @@ import type { FC } from "hono/jsx";
 import type { IFollow, IPost, IUser } from "./models.ts";
 import { Post } from "./models.ts";
 
+// Utility to linkify text and embed images for imgur/placehold URLs
+function linkifyAndEmbed(text: string): string {
+  if (!text) return "";
+  const escapeHtml = (s: string) =>
+    s.replace(
+      /[&<>"']/g,
+      (c) =>
+        ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        })[c] || c,
+    );
+  let safe = escapeHtml(text);
+
+  // Regex for protocol URLs or bare domains with optional paths
+  // Matches: https://foo.com, http://foo.com, foo.com, foo.com/path, www.foo.com/path
+  const urlLikeRegex =
+    /((https?:\/\/)?([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(\/[\w\-.~:@!$&'()*+,;=/?#%]*)?)/gi;
+
+  // Replace all matches, but skip if already inside an HTML tag
+  safe = safe.replace(urlLikeRegex, (match) => {
+    // If already inside an anchor or img tag, skip
+    // (naive but effective: check for preceding '="' or '>' in the last 60 chars)
+    const last60 = safe.slice(
+      Math.max(0, safe.lastIndexOf(match) - 60),
+      safe.lastIndexOf(match),
+    );
+    if (/href=|src=|<a |<img /i.test(last60)) return match;
+
+    let url = match;
+    const display = match;
+    // Add protocol if missing
+    if (!/^https?:\/\//i.test(url)) {
+      url = `http://${url}`;
+    }
+    // Image embedding for imgur and placeholder services
+    if (
+      /https?:\/\/(i\.)?imgur\.com\/(\w+)(\.(jpg|jpeg|png|gif))?/i.test(url)
+    ) {
+      if (/\.(jpg|jpeg|png|gif)$/i.test(url)) {
+        return `<img src="${url}" alt="imgur image" style="width:100%;display:block;margin:0.5em 0;object-fit:contain;" />`;
+      }
+      return `<a href="${url}" target="_blank" rel="noopener">${display}</a>`;
+    }
+    if (
+      /https?:\/\/(placehold\.it|via\.placeholder\.com|placehold\.co)\//i.test(
+        url,
+      )
+    ) {
+      return `<img src="${url}" alt="placeholder image" style="width:100%;display:block;margin:0.5em 0;object-fit:contain;" />`;
+    }
+    // Otherwise, regular link
+    return `<a href="${url}" target="_blank" rel="noopener">${display}</a>`;
+  });
+
+  // Replace newlines with <br>
+  safe = safe.replace(/\n/g, "<br />");
+  return safe;
+}
+
 export const Layout: FC = (props) => (
   <html lang="en" data-theme="light">
     <head>
@@ -293,7 +356,12 @@ export const Home: FC<HomeProps> = async ({
             </div>
           </div>
           <p id="profile-bio" style={{ marginTop: "0.5rem", color: "#666" }}>
-            {user.bio || ""}
+            {/* Render bio with links */}
+            <span
+              dangerouslySetInnerHTML={{
+                __html: linkifyAndEmbed(user.bio || ""),
+              }}
+            />
           </p>
         </div>
         <form
@@ -585,7 +653,9 @@ export const Home: FC<HomeProps> = async ({
               {/* biome-ignore lint/security/noDangerouslySetInnerHtml: Post content is sanitized */}
               <div
                 style={{ margin: "0.75em 0" }}
-                dangerouslySetInnerHTML={{ __html: post.content }}
+                dangerouslySetInnerHTML={{
+                  __html: linkifyAndEmbed(post.content),
+                }}
               />
               <div
                 style={{
@@ -596,19 +666,6 @@ export const Home: FC<HomeProps> = async ({
                   color: "#666",
                 }}
               >
-                <a
-                  href={
-                    isRemote
-                      ? post.objectId || post.author
-                      : `/users/${post.author}/posts/${post._id}`
-                  }
-                  class="secondary"
-                  target={isRemote ? "_blank" : undefined}
-                  rel={isRemote ? "noopener noreferrer" : undefined}
-                >
-                  Permalink
-                </a>
-                {/* Like, Repost, Reply buttons (UI only) */}
                 <button
                   type="button"
                   class="secondary"
@@ -656,6 +713,19 @@ export const Home: FC<HomeProps> = async ({
                 >
                   💬 0
                 </button>
+                <a
+                  href={
+                    isRemote
+                      ? post.objectId || post.author
+                      : `/users/${post.author}/posts/${post._id}`
+                  }
+                  class="secondary"
+                  target={isRemote ? "_blank" : undefined}
+                  rel={isRemote ? "noopener noreferrer" : undefined}
+                  style={{ textDecoration: "none", marginLeft: "1em" }}
+                >
+                  🔗
+                </a>
               </div>
             </div>
           </article>
@@ -1029,7 +1099,7 @@ export const PostView: FC<
         {/* biome-ignore lint/security/noDangerouslySetInnerHtml: Post content is sanitized */}
         <div
           style={{ margin: "0.75em 0" }}
-          dangerouslySetInnerHTML={{ __html: post.content }}
+          dangerouslySetInnerHTML={{ __html: linkifyAndEmbed(post.content) }}
         />
         <div
           style={{
@@ -1040,7 +1110,6 @@ export const PostView: FC<
             color: "#666",
           }}
         >
-          {/* Like, Repost, Reply buttons (UI only) */}
           <button
             type="button"
             class="secondary"
@@ -1088,6 +1157,19 @@ export const PostView: FC<
           >
             💬 0
           </button>
+          <a
+            href={
+              post.remote
+                ? post.objectId || post.author
+                : `/users/${post.author}/posts/${post._id}`
+            }
+            class="secondary"
+            target={post.remote ? "_blank" : undefined}
+            rel={post.remote ? "noopener noreferrer" : undefined}
+            style={{ textDecoration: "none", marginLeft: "1em" }}
+          >
+            🔗
+          </a>
         </div>
       </div>
     </article>
@@ -1172,7 +1254,12 @@ export const PostPage: FC<PostPageProps> = (props) => (
           </div>
         </div>
         <p id="profile-bio" style={{ marginTop: "0.5rem", color: "#666" }}>
-          {props.user?.bio || ""}
+          {/* Render bio with links */}
+          <span
+            dangerouslySetInnerHTML={{
+              __html: linkifyAndEmbed(props.user?.bio || ""),
+            }}
+          />
         </p>
       </div>
     </article>
