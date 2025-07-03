@@ -654,7 +654,9 @@ export const Home: FC<HomeProps> = async ({
               <div
                 style={{ margin: "0.75em 0" }}
                 dangerouslySetInnerHTML={{
-                  __html: linkifyAndEmbed(post.content),
+                  __html: isRemote
+                    ? post.content
+                    : linkifyAndEmbed(post.content),
                 }}
               />
               <div
@@ -1099,7 +1101,9 @@ export const PostView: FC<
         {/* biome-ignore lint/security/noDangerouslySetInnerHtml: Post content is sanitized */}
         <div
           style={{ margin: "0.75em 0" }}
-          dangerouslySetInnerHTML={{ __html: linkifyAndEmbed(post.content) }}
+          dangerouslySetInnerHTML={{
+            __html: post.remote ? post.content : linkifyAndEmbed(post.content),
+          }}
         />
         <div
           style={{
