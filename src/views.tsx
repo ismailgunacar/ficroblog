@@ -258,6 +258,7 @@ export const Home: FC<HomeProps> = async ({
               display: "flex",
               gap: "1rem",
               marginBottom: "1rem",
+              alignItems: "center",
             }}
           >
             {user.avatarUrl && (
@@ -276,7 +277,7 @@ export const Home: FC<HomeProps> = async ({
               <h1 id="profile-displayName" style={{ marginBottom: "0px" }}>
                 <a href="/">{user.displayName}</a>
               </h1>
-              <p>
+              <p style={{ marginBottom: "0px" }}>
                 <a href={`/@${user.username}`} style={{ userSelect: "all" }}>
                   {handle}
                 </a>{" "}
@@ -1125,6 +1126,7 @@ export const PostPage: FC<PostPageProps> = (props) => (
             display: "flex",
             gap: "1rem",
             marginBottom: "1rem",
+            alignItems: "center",
           }}
         >
           {props.user?.avatarUrl && (
@@ -1143,7 +1145,7 @@ export const PostPage: FC<PostPageProps> = (props) => (
             <h1 id="profile-displayName" style={{ marginBottom: "0px" }}>
               <a href="/">{props.user?.displayName || props.name}</a>
             </h1>
-            <p>
+            <p style={{ marginBottom: "0px" }}>
               <a
                 href={`/@${props.user?.username || props.username}`}
                 style={{ userSelect: "all" }}
