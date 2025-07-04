@@ -65,13 +65,18 @@ function linkifyAndEmbed(text: string): string {
   return safe;
 }
 
-export const Layout: FC = (props) => (
+export const Layout: FC<{ user?: IUser; children: unknown }> = ({
+  user,
+  children,
+}) => (
   <html lang="en" data-theme="light">
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <meta name="color-scheme" content="light" />
-      <title>Fongoblog - "Wendy"</title>
+      <title>
+        {user?.displayName ? `${user.displayName}'s Fongoblog` : "Fongoblog"}
+      </title>
       <link
         rel="stylesheet"
         href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"
@@ -100,7 +105,7 @@ export const Layout: FC = (props) => (
       `}</style>
     </head>
     <body>
-      <main class="container">{props.children}</main>
+      <main class="container">{children}</main>
       <script
         dangerouslySetInnerHTML={{
           __html: `

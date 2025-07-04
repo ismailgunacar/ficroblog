@@ -55,7 +55,7 @@ app.get("/@*", async (c) => {
     .exec();
 
   return c.html(
-    <Layout>
+    <Layout user={user}>
       <Home
         user={user}
         handle={handle}
@@ -92,7 +92,7 @@ app.get("/setup", async (c) => {
   if (user) return c.redirect("/");
 
   return c.html(
-    <Layout>
+    <Layout user={undefined}>
       <SetupForm />
     </Layout>,
   );
@@ -228,7 +228,7 @@ app.get("/", async (c) => {
   const domain = c.req.header("host");
 
   return c.html(
-    <Layout>
+    <Layout user={user}>
       <Home
         user={user}
         handle={handle}
@@ -371,7 +371,7 @@ app.get("/users/:username", async (c) => {
     .exec();
 
   return c.html(
-    <Layout>
+    <Layout user={user}>
       <Home
         user={user}
         handle={handle}
@@ -416,7 +416,7 @@ app.post("/users/:username/posts", async (c) => {
     });
 
     // Prepare ActivityPub Note
-    const noteData = {
+    const noteData: Record<string, unknown> = {
       id: new URL(`/users/${username}/posts/${post._id}`, publicUrl),
       attribution: new URL(`/users/${username}`, publicUrl),
       content: post.content,
@@ -496,7 +496,7 @@ app.get("/users/:username/posts/:id", async (c) => {
   const domain = c.req.header("host");
 
   return c.html(
-    <Layout>
+    <Layout user={user}>
       <PostPage
         name={user.displayName}
         username={user.username}
@@ -523,7 +523,7 @@ app.get("/users/:username/followers", async (c) => {
     .exec();
 
   return c.html(
-    <Layout>
+    <Layout user={user}>
       <FollowerList followers={followers} />
     </Layout>,
   );
@@ -541,7 +541,7 @@ app.get("/users/:username/following", async (c) => {
     .exec();
 
   return c.html(
-    <Layout>
+    <Layout user={user}>
       <FollowingList following={following} />
     </Layout>,
   );
