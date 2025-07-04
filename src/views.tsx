@@ -683,6 +683,7 @@ export const Home: FC<HomeProps> = async ({
                     border: "none",
                     cursor: "pointer",
                     color: "#c00",
+                    paddingLeft: "0",
                   }}
                   title="Like"
                 >
@@ -1129,6 +1130,7 @@ export const PostView: FC<
               border: "none",
               cursor: "pointer",
               color: "#c00",
+              paddingLeft: "0",
             }}
             title="Like"
           >
