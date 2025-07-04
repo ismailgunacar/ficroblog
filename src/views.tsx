@@ -128,7 +128,61 @@ export const Layout: FC<{ user?: IUser; children: unknown }> = ({
       }
     });
   }
+
+  function updateAllStats() {
+    // Collect all post IDs from the page
+    var postIds = [];
+    document.querySelectorAll('[data-like-btn]').forEach(function(btn) {
+      var postId = btn.getAttribute('data-post-id');
+      if (postId && !postIds.includes(postId)) {
+        postIds.push(postId);
+      }
+    });
+
+    if (postIds.length === 0) return;
+
+    console.log('Loading stats for', postIds.length, 'posts in a single request');
+
+    // Fetch all stats in one request
+    fetch('/api/posts/stats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ postIds: postIds })
+    }).then(r => r.json()).then(data => {
+      if (data.ok && data.stats) {
+        console.log('Received stats for', Object.keys(data.stats).length, 'posts');
+        // Update each post's stats
+        for (var postId in data.stats) {
+          var stats = data.stats[postId];
+          var likeBtn = document.querySelector('[data-like-btn][data-post-id="' + postId + '"]');
+          var announceBtn = document.querySelector('[data-announce-btn][data-post-id="' + postId + '"]');
+          
+          if (likeBtn) {
+            likeBtn.querySelector('.like-count').textContent = stats.likeCount;
+            if (stats.liked) likeBtn.classList.add('liked');
+            else likeBtn.classList.remove('liked');
+          }
+          if (announceBtn) {
+            announceBtn.querySelector('.announce-count').textContent = stats.announceCount;
+            if (stats.announced) announceBtn.classList.add('announced');
+            else announceBtn.classList.remove('announced');
+          }
+        }
+      }
+    }).catch(function(error) {
+      console.error('Failed to load batch stats:', error);
+      // Fallback to individual requests if batch fails
+      console.log('Falling back to individual requests...');
+      postIds.forEach(function(postId) {
+        updateStats(postId);
+      });
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', function() {
+    // Load all stats on page load (single request instead of multiple)
+    updateAllStats();
+
     document.querySelectorAll('[data-like-btn]').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var postId = btn.getAttribute('data-post-id');
@@ -145,13 +199,13 @@ export const Layout: FC<{ user?: IUser; children: unknown }> = ({
             } else {
               btn.classList.toggle('liked');
             }
+            // Update just this post's stats after interaction
             updateStats(postId);
           }
         });
       });
-      // Initial count and state
-      updateStats(btn.getAttribute('data-post-id'));
     });
+    
     document.querySelectorAll('[data-announce-btn]').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var postId = btn.getAttribute('data-post-id');
@@ -168,12 +222,11 @@ export const Layout: FC<{ user?: IUser; children: unknown }> = ({
             } else {
               btn.classList.toggle('announced');
             }
+            // Update just this post's stats after interaction
             updateStats(postId);
           }
         });
       });
-      // Initial count and state
-      updateStats(btn.getAttribute('data-post-id'));
     });
   });
 })();

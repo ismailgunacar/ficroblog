@@ -924,6 +924,9 @@ app.get("/api/post/:postId/stats", async (c) => {
     return c.json({ ok: false, error: "Invalid postId" }, 400);
   }
 
+  logger.info(`Individual stats request for post ${postId}`);
+  const startTime = Date.now();
+
   try {
     const likeCount = await LikeModel.countDocuments({ object: postId });
     const announceCount = await AnnounceModel.countDocuments({
@@ -940,10 +943,101 @@ app.get("/api/post/:postId/stats", async (c) => {
         object: postId,
       }));
     }
+
+    const duration = Date.now() - startTime;
+    logger.info(
+      `Individual stats completed in ${duration}ms for post ${postId}`,
+    );
+
     return c.json({ ok: true, likeCount, announceCount, liked, announced });
   } catch (error) {
     logger.error(`Failed to get post stats: ${error}`);
     return c.json({ ok: false, error: "Failed to get post stats" }, 500);
+  }
+});
+
+// Get like and announce counts for multiple posts (batch endpoint)
+app.post("/api/posts/stats", async (c) => {
+  const { postIds } = await c.req.json();
+  if (!Array.isArray(postIds) || postIds.length === 0) {
+    return c.json({ ok: false, error: "Invalid postIds array" }, 400);
+  }
+
+  logger.info(`Batch stats request for ${postIds.length} posts`);
+  const startTime = Date.now();
+
+  try {
+    const user = await User.findOne().exec();
+    const actorUrl =
+      user && c.get("sessionUser")
+        ? `https://${c.req.header("host")}/users/${user.username}`
+        : null;
+
+    // Get all like counts in one query
+    const likeCounts = await LikeModel.aggregate([
+      { $match: { object: { $in: postIds } } },
+      { $group: { _id: "$object", count: { $sum: 1 } } },
+    ]);
+
+    // Get all announce counts in one query
+    const announceCounts = await AnnounceModel.aggregate([
+      { $match: { object: { $in: postIds } } },
+      { $group: { _id: "$object", count: { $sum: 1 } } },
+    ]);
+
+    // Get user's likes and announces in one query each
+    let userLikes: string[] = [];
+    let userAnnounces: string[] = [];
+
+    if (actorUrl) {
+      const userLikesResult = await LikeModel.find({
+        actor: actorUrl,
+        object: { $in: postIds },
+      })
+        .select("object")
+        .exec();
+      userLikes = userLikesResult.map((like) => like.object);
+
+      const userAnnouncesResult = await AnnounceModel.find({
+        actor: actorUrl,
+        object: { $in: postIds },
+      })
+        .select("object")
+        .exec();
+      userAnnounces = userAnnouncesResult.map((announce) => announce.object);
+    }
+
+    // Build response object
+    const stats: Record<
+      string,
+      {
+        likeCount: number;
+        announceCount: number;
+        liked: boolean;
+        announced: boolean;
+      }
+    > = {};
+
+    for (const postId of postIds) {
+      const likeCount =
+        likeCounts.find((item) => item._id === postId)?.count || 0;
+      const announceCount =
+        announceCounts.find((item) => item._id === postId)?.count || 0;
+      const liked = userLikes.includes(postId);
+      const announced = userAnnounces.includes(postId);
+
+      stats[postId] = { likeCount, announceCount, liked, announced };
+    }
+
+    const duration = Date.now() - startTime;
+    logger.info(
+      `Batch stats completed in ${duration}ms for ${postIds.length} posts`,
+    );
+
+    return c.json({ ok: true, stats });
+  } catch (error) {
+    logger.error(`Failed to get batch post stats: ${error}`);
+    return c.json({ ok: false, error: "Failed to get batch post stats" }, 500);
   }
 });
 
